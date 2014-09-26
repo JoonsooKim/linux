@@ -16,7 +16,7 @@
 #define _ZRAM_DRV_H_
 
 #include <linux/spinlock.h>
-#include <linux/zsmalloc.h>
+#include <linux/afmalloc.h>
 
 #include "zcomp.h"
 
@@ -95,7 +95,7 @@ struct zram_stats {
 
 struct zram_meta {
 	struct zram_table_entry *table;
-	struct zs_pool *mem_pool;
+	struct afmalloc_pool *mem_pool;
 };
 
 struct zram {
