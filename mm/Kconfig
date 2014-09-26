@@ -589,6 +589,13 @@ config ZSMALLOC
 	  returned by an alloc().  This handle must be mapped in order to
 	  access the allocated space.
 
+config ANTI_FRAGMENTATION_MALLOC
+	boolean "Anti-fragmentation memory allocator"
+	help
+	  Select this to store data into anti-fragmentation memory
+	  allocator. This helps to reduce internal/external
+	  fragmentation caused by storing arbitrary sized data.
+
 config PGTABLE_MAPPING
 	bool "Use page table mapping to access object in zsmalloc"
 	depends on ZSMALLOC
