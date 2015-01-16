@@ -133,6 +133,9 @@ void __init set_highmem_pages_init(void)
 		if (!is_highmem(zone))
 			continue;
 
+		if (is_zone_cma(zone))
+			continue;
+
 		zone_start_pfn = zone->zone_start_pfn;
 		zone_end_pfn = zone_start_pfn + zone->spanned_pages;
 

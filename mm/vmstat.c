@@ -747,8 +747,16 @@ static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
 #define TEXT_FOR_HIGHMEM(xx)
 #endif
 
+#ifdef CONFIG_CMA
+#define TEXT_FOR_CMA(xx) xx "_cma",
+#else
+#define TEXT_FOR_CMA(xx)
+#endif
+
+
 #define TEXTS_FOR_ZONES(xx) TEXT_FOR_DMA(xx) TEXT_FOR_DMA32(xx) xx "_normal", \
-					TEXT_FOR_HIGHMEM(xx) xx "_movable",
+					TEXT_FOR_HIGHMEM(xx) xx "_movable", \
+					TEXT_FOR_CMA(xx)
 
 const char * const vmstat_text[] = {
 	/* enum zone_stat_item countes */

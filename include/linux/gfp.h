@@ -219,19 +219,15 @@ static inline int gfpflags_to_migratetype(const gfp_t gfp_flags)
  * ZONES_SHIFT must be <= 2 on 32 bit platforms.
  */
 
-#if 16 * ZONES_SHIFT > BITS_PER_LONG
-#error ZONES_SHIFT too large to create GFP_ZONE_TABLE integer
-#endif
-
 #define GFP_ZONE_TABLE ( \
-	(ZONE_NORMAL << 0 * ZONES_SHIFT)				      \
-	| (OPT_ZONE_DMA << ___GFP_DMA * ZONES_SHIFT)			      \
-	| (OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * ZONES_SHIFT)		      \
-	| (OPT_ZONE_DMA32 << ___GFP_DMA32 * ZONES_SHIFT)		      \
-	| (ZONE_NORMAL << ___GFP_MOVABLE * ZONES_SHIFT)			      \
-	| (OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * ZONES_SHIFT)	      \
-	| (ZONE_MOVABLE << (___GFP_MOVABLE | ___GFP_HIGHMEM) * ZONES_SHIFT)   \
-	| (OPT_ZONE_DMA32 << (___GFP_MOVABLE | ___GFP_DMA32) * ZONES_SHIFT)   \
+	((u64)ZONE_NORMAL << 0 * ZONES_SHIFT)				      \
+	| ((u64)OPT_ZONE_DMA << ___GFP_DMA * ZONES_SHIFT)		      \
+	| ((u64)OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * ZONES_SHIFT)	      \
+	| ((u64)OPT_ZONE_DMA32 << ___GFP_DMA32 * ZONES_SHIFT)		      \
+	| ((u64)ZONE_NORMAL << ___GFP_MOVABLE * ZONES_SHIFT)		      \
+	| ((u64)OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * ZONES_SHIFT)  \
+	| ((u64)ZONE_MOVABLE << (___GFP_MOVABLE|___GFP_HIGHMEM) * ZONES_SHIFT)\
+	| ((u64)OPT_ZONE_DMA32 << (___GFP_MOVABLE|___GFP_DMA32) * ZONES_SHIFT)\
 )
 
 /*

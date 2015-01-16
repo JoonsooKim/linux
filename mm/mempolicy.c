@@ -1666,7 +1666,8 @@ static int apply_policy_zone(struct mempolicy *policy, enum zone_type zone)
 {
 	enum zone_type dynamic_policy_zone = policy_zone;
 
-	BUG_ON(dynamic_policy_zone == ZONE_MOVABLE);
+	BUG_ON(dynamic_policy_zone == ZONE_MOVABLE ||
+		is_zone_cma_idx(dynamic_policy_zone));
 
 	/*
 	 * if policy->v.nodes has movable memory only,

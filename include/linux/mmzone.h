@@ -319,6 +319,9 @@ enum zone_type {
 	ZONE_HIGHMEM,
 #endif
 	ZONE_MOVABLE,
+#ifdef CONFIG_CMA
+	ZONE_CMA,
+#endif
 	__MAX_NR_ZONES
 };
 
@@ -854,8 +857,33 @@ static inline int zone_movable_is_highmem(void)
 #endif
 }
 
+static inline int is_zone_cma_idx(enum zone_type idx)
+{
+#ifdef CONFIG_CMA
+	return idx == ZONE_CMA;
+#else
+	return 0;
+#endif
+}
+
+static inline int is_zone_cma(struct zone *zone)
+{
+	int zone_idx = zone_idx(zone);
+
+	return is_zone_cma_idx(zone_idx);
+}
+
+static inline int zone_cma_is_highmem(void)
+{
+#ifdef CONFIG_HIGHMEM
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 /**
- * is_highmem - helper function to quickly check if a struct zone is a 
+ * is_highmem - helper function to quickly check if a struct zone is a
  *              highmem zone or not.  This is an attempt to keep references
  *              to ZONE_{DMA/NORMAL/HIGHMEM/etc} in general code to a minimum.
  * @zone - pointer to struct zone variable
@@ -866,7 +894,8 @@ static inline int is_highmem(struct zone *zone)
 	int idx = zone_idx(zone);
 
 	return (idx == ZONE_HIGHMEM ||
-		(idx == ZONE_MOVABLE && zone_movable_is_highmem()));
+		(idx == ZONE_MOVABLE && zone_movable_is_highmem()) ||
+		(is_zone_cma_idx(idx) && zone_cma_is_highmem()));
 #else
 	return 0;
 #endif
