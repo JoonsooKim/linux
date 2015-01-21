@@ -40,6 +40,8 @@ struct cma cma_areas[MAX_CMA_AREAS];
 unsigned cma_area_count;
 static DEFINE_MUTEX(cma_mutex);
 
+static unsigned long __initdata stealed_pages[MAX_NUMNODES][MAX_NR_ZONES];
+
 unsigned long cma_total_pages(unsigned long node_start_pfn,
 				unsigned long node_end_pfn)
 {
@@ -98,6 +100,7 @@ static int __init cma_activate_area(struct cma *cma)
 	unsigned long base_pfn = cma->base_pfn, pfn = base_pfn;
 	unsigned i = cma->count >> pageblock_order;
 	int nid;
+	int zone_index;
 
 	cma->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
 
@@ -125,6 +128,8 @@ static int __init cma_activate_area(struct cma *cma)
 			if (page_to_nid(pfn_to_page(pfn)) != nid)
 				goto err;
 		}
+		zone_index = zone_idx(page_zone(pfn_to_page(base_pfn)));
+		stealed_pages[nid][zone_index] += pageblock_nr_pages;
 		init_cma_reserved_pageblock(base_pfn);
 	} while (--i);
 
@@ -145,13 +150,34 @@ err:
 
 static int __init cma_init_reserved_areas(void)
 {
-	int i;
+	int i, j;
+	pg_data_t *pgdat;
+	struct zone *zone;
 
 	for (i = 0; i < cma_area_count; i++) {
 		int ret = cma_activate_area(&cma_areas[i]);
 
 		if (ret)
 			return ret;
+	}
+
+	for (i = 0; i < MAX_NUMNODES; i++) {
+		for (j = 0; j < MAX_NR_ZONES; j++) {
+			if (stealed_pages[i][j])
+				goto print;
+		}
+		continue;
+
+print:
+		pgdat = NODE_DATA(i);
+		for (j = 0; j < MAX_NR_ZONES; j++) {
+			if (!stealed_pages[i][j])
+				continue;
+
+			zone = pgdat->node_zones + j;
+			pr_info("Steal %lu pages from %s\n",
+				stealed_pages[i][j], zone->name);
+		}
 	}
 
 	return 0;
