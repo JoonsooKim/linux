@@ -12,6 +12,7 @@
 #include <linux/dma-contiguous.h>
 #include <linux/slab.h>
 #include <linux/mm_types.h>
+#include <linux/sizes.h>
 
 #include "cma.h"
 
@@ -25,6 +26,32 @@ static HLIST_HEAD(cma_mem_head);
 static DEFINE_SPINLOCK(cma_mem_head_lock);
 
 static struct dentry *cma_debugfs_root;
+
+static bool reserve_areas;
+static int __init early_test_cma_areas(char *buf)
+{
+	if (!buf)
+		return -EINVAL;
+
+	if (strcmp(buf, "on") == 0)
+		reserve_areas = true;
+
+	return 0;
+}
+early_param("cma_test_areas", early_test_cma_areas);
+
+void reserve_test_cma_areas(void)
+{
+	struct cma *cma;
+
+	if (!reserve_areas)
+		return;
+
+	cma_declare_contiguous(0, SZ_64M, 0, 0, 0, false, &cma);
+	cma_declare_contiguous(0, SZ_128M, cma_get_base(cma) -
+				SZ_128M - SZ_64M, 0, 1, false, &cma);
+	cma_declare_contiguous(0, SZ_256M, 0, 0, 3, false, &cma);
+}
 
 static int cma_debugfs_get(void *data, u64 *val)
 {

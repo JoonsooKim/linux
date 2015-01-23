@@ -684,6 +684,13 @@ void __init zone_sizes_init(void)
 	max_zone_pfns[ZONE_HIGHMEM]	= max_pfn;
 #endif
 
+#ifdef CONFIG_CMA_DEBUGFS
+	{
+		extern bool reserve_test_cma_areas(void);
+
+		reserve_test_cma_areas();
+	}
+#endif
 	free_area_init_nodes(max_zone_pfns);
 }
 
