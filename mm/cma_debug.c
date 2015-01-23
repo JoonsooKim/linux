@@ -11,6 +11,7 @@
 #include <linux/kernel.h>
 #include <linux/dma-contiguous.h>
 #include <linux/slab.h>
+#include <linux/mm_types.h>
 
 #include "cma.h"
 
@@ -72,8 +73,57 @@ static int cma_alloc_write(void *data, u64 val)
 	return cma_alloc_mem(cma, pages);
 }
 
+static struct cma_mem *cma_get_entry_from_list(void)
+{
+	struct cma_mem *mem = NULL;
+
+	spin_lock(&cma_mem_head_lock);
+	if (!hlist_empty(&cma_mem_head)) {
+		mem = hlist_entry(cma_mem_head.first, struct cma_mem, node);
+		hlist_del_init(&mem->node);
+	}
+	spin_unlock(&cma_mem_head_lock);
+
+	return mem;
+}
+
+static int cma_free_mem(struct cma *cma, int count)
+{
+	struct cma_mem *mem = NULL;
+
+	while (count) {
+		mem = cma_get_entry_from_list();
+		if (mem == NULL)
+			return 0;
+
+		if (mem->n <= count) {
+			cma_release(cma, mem->p, mem->n);
+			count -= mem->n;
+			kfree(mem);
+		} else {
+			cma_release(cma, mem->p, count);
+			mem->p += count;
+			mem->n -= count;
+			count = 0;
+			cma_add_to_cma_mem_list(mem);
+		}
+	}
+
+	return 0;
+}
+
+static int cma_free_write(void *data, u64 val)
+{
+	struct cma *cma = (struct cma *)data;
+        int pages = val;
+
+        return cma_free_mem(cma, pages);
+}
+
+
 DEFINE_SIMPLE_ATTRIBUTE(cma_debugfs_fops, cma_debugfs_get, NULL, "%llu\n");
 DEFINE_SIMPLE_ATTRIBUTE(cma_alloc_fops, NULL, cma_alloc_write, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(cma_free_fops, NULL, cma_free_write, "%llu\n");
 
 static void cma_debugfs_add_one(struct cma *cma, int idx)
 {
@@ -93,6 +143,8 @@ static void cma_debugfs_add_one(struct cma *cma, int idx)
 			&cma->order_per_bit, &cma_debugfs_fops);
 	debugfs_create_file("alloc", S_IWUSR, tmp,
 				cma, &cma_alloc_fops);
+	debugfs_create_file("free", S_IWUSR, tmp,
+				cma, &cma_free_fops);
 
 	u32s = DIV_ROUND_UP(cma_bitmap_maxno(cma), BITS_PER_BYTE * sizeof(u32));
 	debugfs_create_u32_array("bitmap", S_IRUGO, tmp, (u32*)cma->bitmap, u32s);
