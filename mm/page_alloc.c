@@ -4040,8 +4040,8 @@ static void setup_zone_migrate_reserve(struct zone *zone)
 			continue;
 		page = pfn_to_page(pfn);
 
-		/* Watch out for overlapping nodes */
-		if (page_to_nid(page) != zone_to_nid(zone))
+		/* Watch out for overlapping zones */
+		if (page_zone(page) != zone)
 			continue;
 
 		block_migratetype = get_pageblock_migratetype(page);
