@@ -210,8 +210,8 @@ int undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
  * Returns 1 if all pages in the range are isolated.
  */
 static int
-__test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
-				  bool skip_hwpoisoned_pages)
+__test_page_isolated_in_pageblock(struct zone *zone, unsigned long pfn,
+			unsigned long end_pfn, bool skip_hwpoisoned_pages)
 {
 	struct page *page;
 
@@ -221,6 +221,9 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 			continue;
 		}
 		page = pfn_to_page(pfn);
+		if (page_zone(page) != zone)
+			break;
+
 		if (PageBuddy(page)) {
 			/*
 			 * If race between isolatation and allocation happens,
@@ -281,7 +284,7 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	/* Check all pages are free or marked as ISOLATED */
 	zone = page_zone(page);
 	spin_lock_irqsave(&zone->lock, flags);
-	ret = __test_page_isolated_in_pageblock(start_pfn, end_pfn,
+	ret = __test_page_isolated_in_pageblock(zone, start_pfn, end_pfn,
 						skip_hwpoisoned_pages);
 	spin_unlock_irqrestore(&zone->lock, flags);
 	return ret ? 0 : -EBUSY;
