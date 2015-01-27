@@ -40,6 +40,23 @@ struct cma cma_areas[MAX_CMA_AREAS];
 unsigned cma_area_count;
 static DEFINE_MUTEX(cma_mutex);
 
+unsigned long cma_total_pages(unsigned long node_start_pfn,
+				unsigned long node_end_pfn)
+{
+	int i;
+	unsigned long total_pages = 0;
+
+	for (i = 0; i < cma_area_count; i++) {
+		struct cma *cma = &cma_areas[i];
+
+		if (node_start_pfn <= cma->base_pfn &&
+			cma->base_pfn < node_end_pfn)
+			total_pages += cma->count;
+	}
+
+	return total_pages;
+}
+
 phys_addr_t cma_get_base(struct cma *cma)
 {
 	return PFN_PHYS(cma->base_pfn);

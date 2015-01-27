@@ -15,6 +15,9 @@
 
 struct cma;
 
+#ifdef CONFIG_CMA
+extern unsigned long cma_total_pages(unsigned long node_start_pfn,
+				unsigned long node_end_pfn);
 extern phys_addr_t cma_get_base(struct cma *cma);
 extern unsigned long cma_get_size(struct cma *cma);
 
@@ -27,4 +30,10 @@ extern int cma_init_reserved_mem(phys_addr_t base,
 					struct cma **res_cma);
 extern struct page *cma_alloc(struct cma *cma, int count, unsigned int align);
 extern bool cma_release(struct cma *cma, struct page *pages, int count);
+
+#else
+static inline unsigned long cma_total_pages(unsigned long node_start_pfn,
+				unsigned long node_end_pfn) { return 0; }
+
+#endif /* CONFIG_CMA */
 #endif
