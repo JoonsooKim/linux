@@ -155,6 +155,13 @@ void __init arm64_memblock_init(void)
 	if (IS_ENABLED(CONFIG_ZONE_DMA))
 		dma_phys_limit = max_zone_dma_phys();
 	dma_contiguous_reserve(dma_phys_limit);
+#ifdef CONFIG_CMA_DEBUGFS
+	{
+		extern bool reserve_test_cma_areas(void);
+
+		reserve_test_cma_areas();
+	}
+#endif
 
 	memblock_allow_resize();
 	memblock_dump_all();
