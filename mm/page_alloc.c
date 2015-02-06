@@ -4151,7 +4151,7 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 		INIT_LIST_HEAD(&page->lru);
 #ifdef WANT_PAGE_VIRTUAL
 		/* The shift won't overflow because ZONE_NORMAL is below 4G. */
-		if (!is_highmem_idx(zone))
+		if (!is_highmem(z))
 			set_page_address(page, __va(pfn << PAGE_SHIFT));
 #endif
 	}
@@ -4881,7 +4881,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 					zone_names[0], dma_reserve);
 		}
 
-		if (!is_highmem_idx(j))
+		if (!is_highmem(zone))
 			nr_kernel_pages += freesize;
 		/* Charge for highmem memmap if there are enough kernel pages */
 		else if (nr_kernel_pages > memmap_pages * 2)
@@ -4895,7 +4895,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 		 * when the bootmem allocator frees pages into the buddy system.
 		 * And all highmem pages will be managed by the buddy system.
 		 */
-		zone->managed_pages = is_highmem_idx(j) ? realsize : freesize;
+		zone->managed_pages = is_highmem(zone) ? realsize : freesize;
 #ifdef CONFIG_NUMA
 		zone->node = nid;
 		zone->min_unmapped_pages = (freesize*sysctl_min_unmapped_ratio)

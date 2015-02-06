@@ -3074,7 +3074,7 @@ static unsigned long balance_pgdat(pg_data_t *pgdat, int order,
 			 * has a highmem zone, force kswapd to reclaim from
 			 * it to relieve lowmem pressure.
 			 */
-			if (buffer_heads_over_limit && is_highmem_idx(i)) {
+			if (buffer_heads_over_limit && is_highmem(zone)) {
 				end_zone = i;
 				break;
 			}

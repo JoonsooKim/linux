@@ -854,16 +854,6 @@ static inline int zone_movable_is_highmem(void)
 #endif
 }
 
-static inline int is_highmem_idx(enum zone_type idx)
-{
-#ifdef CONFIG_HIGHMEM
-	return (idx == ZONE_HIGHMEM ||
-		(idx == ZONE_MOVABLE && zone_movable_is_highmem()));
-#else
-	return 0;
-#endif
-}
-
 /**
  * is_highmem - helper function to quickly check if a struct zone is a 
  *              highmem zone or not.  This is an attempt to keep references
@@ -873,10 +863,10 @@ static inline int is_highmem_idx(enum zone_type idx)
 static inline int is_highmem(struct zone *zone)
 {
 #ifdef CONFIG_HIGHMEM
-	int zone_off = (char *)zone - (char *)zone->zone_pgdat->node_zones;
-	return zone_off == ZONE_HIGHMEM * sizeof(*zone) ||
-	       (zone_off == ZONE_MOVABLE * sizeof(*zone) &&
-		zone_movable_is_highmem());
+	int idx = zone_idx(zone);
+
+	return (idx == ZONE_HIGHMEM ||
+		(idx == ZONE_MOVABLE && zone_movable_is_highmem()));
 #else
 	return 0;
 #endif
