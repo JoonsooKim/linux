@@ -1159,6 +1159,13 @@ void __init setup_arch(char **cmdline_p)
 
 	initmem_init();
 	dma_contiguous_reserve(max_pfn_mapped << PAGE_SHIFT);
+#ifdef CONFIG_CMA_DEBUGFS
+	{
+		extern bool reserve_test_cma_areas(void);
+
+		reserve_test_cma_areas();
+	}
+#endif
 
 	/*
 	 * Reserve memory for crash kernel after SRAT is parsed so that it
