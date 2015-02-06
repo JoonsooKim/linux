@@ -323,6 +323,13 @@ void __init arm_memblock_init(const struct machine_desc *mdesc)
 	 * must come from DMA area inside low memory
 	 */
 	dma_contiguous_reserve(arm_dma_limit);
+#ifdef CONFIG_CMA_DEBUGFS
+	{
+		extern bool reserve_test_cma_areas(void);
+
+		reserve_test_cma_areas();
+	}
+#endif
 
 	arm_memblock_steal_permitted = false;
 	memblock_dump_all();
