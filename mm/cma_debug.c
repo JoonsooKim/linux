@@ -50,7 +50,7 @@ void reserve_test_cma_areas(void)
 	cma_declare_contiguous(0, SZ_64M, 0, 0, 0, false, &cma);
 	cma_declare_contiguous(0, SZ_128M, cma_get_base(cma) -
 				SZ_128M - SZ_64M, 0, 1, false, &cma);
-	cma_declare_contiguous(0, SZ_256M, 0, 0, 3, false, &cma);
+	cma_declare_contiguous(0, SZ_256M, 0, SZ_256M, 3, false, &cma);
 }
 
 static int cma_debugfs_get(void *data, u64 *val)
