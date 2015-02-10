@@ -97,7 +97,7 @@ static int __init cma_activate_area(struct cma *cma)
 	int bitmap_size = BITS_TO_LONGS(cma_bitmap_maxno(cma)) * sizeof(long);
 	unsigned long base_pfn = cma->base_pfn, pfn = base_pfn;
 	unsigned i = cma->count >> pageblock_order;
-	struct zone *zone;
+	int nid;
 
 	cma->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
 
@@ -105,7 +105,7 @@ static int __init cma_activate_area(struct cma *cma)
 		return -ENOMEM;
 
 	WARN_ON_ONCE(!pfn_valid(pfn));
-	zone = page_zone(pfn_to_page(pfn));
+	nid = page_to_nid(pfn_to_page(pfn));
 
 	do {
 		unsigned j;
@@ -115,15 +115,24 @@ static int __init cma_activate_area(struct cma *cma)
 			WARN_ON_ONCE(!pfn_valid(pfn));
 			/*
 			 * alloc_contig_range requires the pfn range
-			 * specified to be in the same zone. Make this
-			 * simple by forcing the entire CMA resv range
-			 * to be in the same zone.
+			 * specified to be in the same zone. We will
+			 * achieve this goal by stealing pages from
+			 * oridinary zone to ZONE_CMA. But, we need
+			 * to make sure that entire CMA resv range to
+			 * be in the same node. Otherwise, they could
+			 * be on ZONE_CMA of different node.
 			 */
-			if (page_zone(pfn_to_page(pfn)) != zone)
+			if (page_to_nid(pfn_to_page(pfn)) != nid)
 				goto err;
 		}
-		init_cma_reserved_pageblock(pfn_to_page(base_pfn));
+		init_cma_reserved_pageblock(base_pfn);
 	} while (--i);
+
+	/*
+	 * ZONE_CMA steals some managed pages from other zones,
+	 * so we need to re-calculate pcp count for all zones.
+	 */
+	recalc_per_cpu_pageset();
 
 	mutex_init(&cma->lock);
 	return 0;

@@ -59,6 +59,7 @@
 #include <linux/page-debug-flags.h>
 #include <linux/hugetlb.h>
 #include <linux/sched/rt.h>
+#include <linux/cma.h>
 
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
@@ -807,16 +808,35 @@ void __init __free_pages_bootmem(struct page *page, unsigned int order)
 }
 
 #ifdef CONFIG_CMA
+static void __init adjust_present_page_count(struct page *page, long count)
+{
+	struct zone *zone = page_zone(page);
+
+	zone->present_pages += count;
+}
+
 /* Free whole pageblock and set its migration type to MIGRATE_CMA. */
-void __init init_cma_reserved_pageblock(struct page *page)
+void __init init_cma_reserved_pageblock(unsigned long pfn)
 {
 	unsigned i = pageblock_nr_pages;
+	struct page *page = pfn_to_page(pfn);
 	struct page *p = page;
+	int nid = page_to_nid(page);
+
+	/*
+	 * ZONE_CMA will steal present pages from other zones by changing
+	 * page links, so adjust present_page count before stealing.
+	 */
+	adjust_present_page_count(page, -pageblock_nr_pages);
 
 	do {
 		__ClearPageReserved(p);
 		set_page_count(p, 0);
-	} while (++p, --i);
+
+		/* Steal page from other zones */
+		set_page_links(p, ZONE_CMA, nid, pfn);
+		mminit_verify_page_links(p, ZONE_CMA, nid, pfn);
+	} while (++p, ++pfn, --i);
 
 	set_pageblock_migratetype(page, MIGRATE_CMA);
 
@@ -4341,6 +4361,20 @@ void __init setup_per_cpu_pageset(void)
 		setup_zone_pageset(zone);
 }
 
+void __init recalc_per_cpu_pageset(void)
+{
+	int cpu;
+	struct zone *zone;
+	struct per_cpu_pageset *pcp;
+
+	for_each_populated_zone(zone) {
+		for_each_possible_cpu(cpu) {
+			pcp = per_cpu_ptr(zone->pageset, cpu);
+			pageset_set_high_and_batch(zone, pcp);
+		}
+	}
+}
+
 static noinline __init_refok
 int zone_wait_table_init(struct zone *zone, unsigned long zone_size_pages)
 {
@@ -4880,7 +4914,9 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 
 			zone_start_pfn = first_zone_start_pfn;
 			size = last_zone_end_pfn - first_zone_start_pfn;
-			realsize = freesize = 0;
+			realsize = freesize =
+				cma_total_pages(first_zone_start_pfn,
+						last_zone_end_pfn);
 			memmap_pages = 0;
 			goto init_zone;
 		}

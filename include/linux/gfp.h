@@ -186,6 +186,12 @@ static inline int gfpflags_to_migratetype(const gfp_t gfp_flags)
 #define OPT_ZONE_DMA32 ZONE_NORMAL
 #endif
 
+#ifdef CONFIG_CMA
+#define OPT_ZONE_CMA ZONE_CMA
+#else
+#define OPT_ZONE_CMA ZONE_MOVABLE
+#endif
+
 /*
  * GFP_ZONE_TABLE is a word size bitstring that is used for looking up the
  * zone to use given the lowest 4 bits of gfp_t. Entries are ZONE_SHIFT long
@@ -226,7 +232,7 @@ static inline int gfpflags_to_migratetype(const gfp_t gfp_flags)
 	| ((u64)OPT_ZONE_DMA32 << ___GFP_DMA32 * ZONES_SHIFT)		      \
 	| ((u64)ZONE_NORMAL << ___GFP_MOVABLE * ZONES_SHIFT)		      \
 	| ((u64)OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * ZONES_SHIFT)  \
-	| ((u64)ZONE_MOVABLE << (___GFP_MOVABLE|___GFP_HIGHMEM) * ZONES_SHIFT)\
+	| ((u64)OPT_ZONE_CMA << (___GFP_MOVABLE|___GFP_HIGHMEM) * ZONES_SHIFT)\
 	| ((u64)OPT_ZONE_DMA32 << (___GFP_MOVABLE|___GFP_DMA32) * ZONES_SHIFT)\
 )
 
@@ -412,7 +418,7 @@ extern int alloc_contig_range(unsigned long start, unsigned long end,
 extern void free_contig_range(unsigned long pfn, unsigned nr_pages);
 
 /* CMA stuff */
-extern void init_cma_reserved_pageblock(struct page *page);
+extern void init_cma_reserved_pageblock(unsigned long pfn);
 
 #endif
 
