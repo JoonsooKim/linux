@@ -14,6 +14,7 @@
 #include <linux/backing-dev.h>
 #include <linux/sysctl.h>
 #include <linux/sysfs.h>
+#include <linux/kasan.h>
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
@@ -213,6 +214,7 @@ static void isolate_freepages(struct zone *zone,
 	list_for_each_entry(page, freelist, lru) {
 		arch_alloc_page(page, 0);
 		kernel_map_pages(page, 1, 1);
+		kasan_alloc_pages(page, 0);
 	}
 
 	cc->free_pfn = high_pfn;
