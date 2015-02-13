@@ -55,3 +55,7 @@
 #define __compiletime_warning(message) __attribute__((warning(message)))
 #define __compiletime_error(message) __attribute__((error(message)))
 #endif
+
+#if GCC_VERSION >= 40902
+#define KASAN_ABI_VERSION 3
+#endif
