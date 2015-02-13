@@ -1262,5 +1262,7 @@ source "lib/Kconfig.kgdb"
 
 source "lib/Kconfig.kmemcheck"
 
+source "lib/Kconfig.kasan"
+
 config TEST_KSTRTOX
 	tristate "Test kstrto*() family of functions at runtime"
