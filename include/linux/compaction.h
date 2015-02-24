@@ -51,6 +51,9 @@ extern void compaction_defer_reset(struct zone *zone, int order,
 				bool alloc_success);
 extern bool compaction_restarting(struct zone *zone, int order);
 
+extern void submit_antifrag_work(struct zone *zone, unsigned long base_pfn,
+				int mt, unsigned long moved_pages);
+
 #else
 static inline unsigned long try_to_compact_pages(gfp_t gfp_mask,
 			unsigned int order, int alloc_flags,
@@ -81,6 +84,12 @@ static inline void defer_compaction(struct zone *zone, int order)
 static inline bool compaction_deferred(struct zone *zone, int order)
 {
 	return true;
+}
+
+static inline void submit_antifrag_work(struct zone *zone,
+					unsigned long base_pfn, int mt,
+					unsigned long moved_pages)
+{
 }
 
 #endif /* CONFIG_COMPACTION */

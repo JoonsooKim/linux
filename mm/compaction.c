@@ -7,6 +7,10 @@
  *
  * Copyright IBM Corp. 2007-2010 Mel Gorman <mel@csn.ul.ie>
  */
+
+#define pr_fmt(fmt) "compact: " fmt
+#define DEBUG
+
 #include <linux/swap.h>
 #include <linux/migrate.h>
 #include <linux/compaction.h>
@@ -1714,5 +1718,247 @@ void compaction_unregister_node(struct node *node)
 	return device_remove_file(&node->dev, &dev_attr_compact);
 }
 #endif /* CONFIG_SYSFS && CONFIG_NUMA */
+
+#define MAX_ANTIFRAG_REQ (5)
+
+struct antifrag_req {
+	struct work_struct antifrag_work;
+	int node;
+	struct list_head list;
+	unsigned long base_pfn;
+	int mt;
+	unsigned long moved_pages;
+};
+
+static DEFINE_SPINLOCK(request_lock);
+static struct list_head request_list[MAX_NUMNODES];
+
+static unsigned long pending[MAX_NUMNODES];
+static bool antifrag_initialized;
+
+static struct page *alloc_antifrag_target(struct page *page,
+			unsigned long private, int **resultp)
+{
+	int nid;
+	gfp_t gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_THISNODE |
+				__GFP_MEMALLOC | __GFP_NOWARN | __GFP_NORETRY;
+
+	nid = page_to_nid(page);
+	if (PageHighMem(page))
+		gfp_mask |= __GFP_HIGHMEM;
+
+	return alloc_pages_exact_node(nid, gfp_mask, 0);
+}
+
+void submit_antifrag_work(struct zone *zone, unsigned long base_pfn,
+			int mt, unsigned long moved_pages)
+{
+	int node;
+	struct antifrag_req *req;
+	unsigned long flags;
+
+	if (unlikely(!antifrag_initialized))
+		return;
+
+	node = zone_to_nid(zone);
+	spin_lock_irqsave(&request_lock, flags);
+	if (list_empty(&request_list[node])) {
+		spin_unlock_irqrestore(&request_lock, flags);
+		return;
+	}
+
+	req = list_first_entry(&request_list[node], struct antifrag_req, list);
+	list_del(&req->list);
+	pending[node]++;
+	spin_unlock_irqrestore(&request_lock, flags);
+
+	req->base_pfn = base_pfn;
+	req->mt = mt;
+	req->moved_pages = moved_pages;
+
+	pr_debug("%s: %d: %d: wakeup (0x%lx, %d, %lu) %lu items remain\n",
+		__func__, node, smp_processor_id(),
+		base_pfn, mt, moved_pages, pending[node]);
+
+	queue_work(system_highpri_wq, &req->antifrag_work);
+}
+
+static bool valid_emptying_pageblock(struct zone *zone,
+				unsigned long moved_pages,
+				unsigned long block_start_pfn,
+				unsigned long block_end_pfn)
+{
+	unsigned long pfn;
+	struct page *page;
+	unsigned long freepage_order;
+	unsigned long migratable_pages = 0;
+	unsigned long empty_threshold = 1 << (pageblock_order - 1);
+
+	if (!pageblock_pfn_to_page(block_start_pfn, block_end_pfn, zone))
+		return false;
+
+	for (pfn = block_start_pfn; pfn < block_end_pfn; pfn++) {
+		if (!pfn_valid_within(pfn))
+			continue;
+
+		page = pfn_to_page(pfn);
+
+		if (PageBuddy(page)) {
+			freepage_order = page_order_unsafe(page);
+
+			if (freepage_order > 0 && freepage_order < MAX_ORDER)
+				pfn += (1UL << freepage_order) - 1;
+
+			continue;
+		}
+
+		if (!PageLRU(page))
+			continue;
+
+		if (!page_mapping(page) &&
+			page_count(page) > page_mapcount(page))
+			continue;
+
+		migratable_pages++;
+	}
+
+	if (!migratable_pages)
+		return false;
+
+	if (moved_pages + migratable_pages < empty_threshold)
+		return false;
+
+	return true;
+}
+
+static void empty_pageblock(struct antifrag_req *req)
+{
+	int cpu, ret;
+	unsigned long migrated_pages = 0;
+	unsigned long block_start_pfn, block_end_pfn, pfn;
+	struct page *base_page = pfn_to_page(req->base_pfn);
+	struct zone *zone = page_zone(base_page);
+	struct compact_control cc = {
+		.nr_migratepages = 0,
+		.order = -1,
+		.zone = zone,
+		.mode = MIGRATE_SYNC_LIGHT,
+		.ignore_skip_hint = true,
+	};
+	LIST_HEAD(isolated_pages);
+
+	INIT_LIST_HEAD(&cc.migratepages);
+
+	block_start_pfn = round_down(req->base_pfn, pageblock_nr_pages);
+	block_start_pfn = max(zone->zone_start_pfn, block_start_pfn);
+	block_end_pfn = block_start_pfn + pageblock_nr_pages;
+	block_end_pfn = min(zone_end_pfn(zone), block_end_pfn);
+
+	if (!valid_emptying_pageblock(zone, req->moved_pages,
+			block_start_pfn, block_end_pfn)) {
+		pr_debug("%s: %d: %d: emptying skipped (0x%lx, %d, %lu, %lu)\n",
+			__func__, req->node, smp_processor_id(),
+			req->base_pfn, req->mt, req->moved_pages,
+			(unsigned long)0);
+
+		return;
+	}
+
+	spin_lock_irq(&zone->lock);
+	set_pageblock_migratetype(base_page, req->mt);
+	spin_unlock_irq(&zone->lock);
+
+	pfn = block_start_pfn;
+	while (pfn < block_end_pfn) {
+		if (fatal_signal_pending(current))
+			break;
+
+		cc.nr_migratepages = 0;
+		pfn = isolate_migratepages_range(&cc, pfn, block_end_pfn);
+		if (!pfn)
+			break;
+
+		ret = migrate_pages(&cc.migratepages, alloc_antifrag_target,
+					NULL, 0, cc.mode, MR_ANTIFRAG);
+		putback_movable_pages(&cc.migratepages);
+
+		if (ret < 0)
+			break;
+	}
+
+	cpu = get_cpu();
+	lru_add_drain_cpu(cpu);
+	drain_local_pages(zone);
+	put_cpu();
+
+	pr_debug("%s: %d: %d: emptying success (0x%lx, %d, %lu, %lu)\n",
+			__func__, req->node, smp_processor_id(),
+			req->base_pfn, req->mt, req->moved_pages,
+			migrated_pages);
+}
+
+static void do_antifrag(struct work_struct *work)
+{
+	struct antifrag_req *req =
+		container_of(work, struct antifrag_req, antifrag_work);
+	int node = req->node;
+
+	pr_debug("%s: %d: %d: start worker (0x%lx, %d, %lu) %lu items remain\n",
+			__func__, node, smp_processor_id(),
+			req->base_pfn, req->mt, req->moved_pages,
+			pending[node]);
+
+	empty_pageblock(req);
+
+	spin_lock_irq(&request_lock);
+	list_add(&req->list, &request_list[req->node]);
+	pending[node]--;
+	spin_unlock_irq(&request_lock);
+
+	pr_debug("%s: %d: %d: finish worker (0x%lx, %d, %lu) %lu items remain\n",
+			__func__, req->node, smp_processor_id(),
+			req->base_pfn, req->mt, req->moved_pages,
+			pending[node]);
+}
+
+static int __init antifrag_init(void)
+{
+	int node, i;
+	struct antifrag_req *req;
+
+	for_each_node(node)
+		INIT_LIST_HEAD(&request_list[node]);
+
+	for_each_online_node(node) {
+		for (i = 0; i < MAX_ANTIFRAG_REQ; i++) {
+			req = kmalloc_node(sizeof(struct antifrag_req),
+							GFP_KERNEL, node);
+			if (!req)
+				goto fail;
+
+			req->node = node;
+			INIT_WORK(&req->antifrag_work, do_antifrag);
+			INIT_LIST_HEAD(&req->list);
+			list_add(&req->list, &request_list[node]);
+		}
+	}
+
+	antifrag_initialized = true;
+
+	return 0;
+
+fail:
+	for_each_online_node(node) {
+		while (!list_empty(&request_list[node])) {
+			req = list_first_entry(&request_list[node],
+					struct antifrag_req, list);
+			list_del(&req->list);
+			kfree(req);
+		}
+	}
+
+	return 1;
+}
+module_init(antifrag_init)
 
 #endif /* CONFIG_COMPACTION */

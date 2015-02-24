@@ -1529,7 +1529,7 @@ static bool can_steal_fallback(unsigned int order, int start_mt)
  * use it's pages as requested migratetype in the future.
  */
 static void steal_suitable_fallback(struct zone *zone, struct page *page,
-							  int start_type)
+					int start_type, int fallback_type)
 {
 	int current_order = page_order(page);
 	int pages;
@@ -1543,6 +1543,9 @@ static void steal_suitable_fallback(struct zone *zone, struct page *page,
 	}
 
 	pages = move_freepages_block(zone, page, start_type);
+	if (start_type != MIGRATE_MOVABLE && fallback_type == MIGRATE_MOVABLE)
+		submit_antifrag_work(zone, page_to_pfn(page),
+					start_type, pages);
 
 	/* Claim the whole block if over half of it is free */
 	if (pages >= (1 << (pageblock_order-1)) ||
@@ -1611,9 +1614,10 @@ steal_fallback(struct zone *zone, unsigned int order, int start_migratetype)
 		page = list_entry(area->free_list[fallback_mt].next,
 						struct page, lru);
 
-		if (can_steal_pageblock)
-			steal_suitable_fallback(zone, page, start_migratetype);
-		else
+		if (can_steal_pageblock) {
+			steal_suitable_fallback(zone, page,
+				start_migratetype, fallback_mt);
+		} else
 			list_move(&page->lru, &area->free_list[start_migratetype]);
 
 		trace_mm_page_alloc_extfrag(page, order, current_order,
