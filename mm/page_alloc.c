@@ -1630,7 +1630,7 @@ steal_fallback(struct zone *zone, unsigned int order, int start_migratetype)
  * Call me with the zone->lock already held.
  */
 static struct page *__rmqueue(struct zone *zone, unsigned int order,
-						int migratetype)
+					int migratetype, int index)
 {
 	struct page *page;
 
@@ -1638,6 +1638,10 @@ retry:
 	page = __rmqueue_smallest(zone, order, migratetype);
 
 	if (unlikely(!page) && migratetype != MIGRATE_RESERVE) {
+		/* We already get some freepages so don't do agressive steal */
+		if (index != 0)
+			goto out;
+
 		if (migratetype == MIGRATE_MOVABLE) {
 			page = __rmqueue_cma_fallback(zone, order);
 			if (page)
@@ -1674,7 +1678,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 
 	spin_lock(&zone->lock);
 	for (i = 0; i < count; ++i) {
-		struct page *page = __rmqueue(zone, order, migratetype);
+		struct page *page = __rmqueue(zone, order, migratetype, i);
 		if (unlikely(page == NULL))
 			break;
 
@@ -2085,7 +2089,7 @@ struct page *buffered_rmqueue(struct zone *preferred_zone,
 			WARN_ON_ONCE(order > 1);
 		}
 		spin_lock_irqsave(&zone->lock, flags);
-		page = __rmqueue(zone, order, migratetype);
+		page = __rmqueue(zone, order, migratetype, 0);
 		spin_unlock(&zone->lock);
 		if (!page)
 			goto failed;
