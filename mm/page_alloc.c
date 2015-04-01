@@ -1537,6 +1537,8 @@ static void steal_suitable_fallback(struct zone *zone, struct page *page,
 	/* Take ownership for orders >= pageblock_order */
 	if (current_order >= pageblock_order) {
 		change_pageblock_range(page, current_order, start_type);
+		list_move(&page->lru,
+			&zone->free_area[current_order].free_list[start_type]);
 		return;
 	}
 
@@ -1585,15 +1587,15 @@ int find_suitable_fallback(struct free_area *area, unsigned int order,
 	return -1;
 }
 
-/* Remove an element from the buddy allocator from the fallback list */
-static inline struct page *
-__rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
+/* Steal an element from the buddy allocator from the fallback list */
+static inline bool
+steal_fallback(struct zone *zone, unsigned int order, int start_migratetype)
 {
 	struct free_area *area;
 	unsigned int current_order;
 	struct page *page;
 	int fallback_mt;
-	bool can_steal;
+	bool can_steal_pageblock;
 
 	/* Find the largest possible block of pages in the other list */
 	for (current_order = MAX_ORDER-1;
@@ -1601,39 +1603,26 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
 				--current_order) {
 		area = &(zone->free_area[current_order]);
 		fallback_mt = find_suitable_fallback(area, current_order,
-				start_migratetype, false, &can_steal);
+						start_migratetype, false,
+						&can_steal_pageblock);
 		if (fallback_mt == -1)
 			continue;
 
 		page = list_entry(area->free_list[fallback_mt].next,
 						struct page, lru);
-		if (can_steal)
+
+		if (can_steal_pageblock)
 			steal_suitable_fallback(zone, page, start_migratetype);
-
-		/* Remove the page from the freelists */
-		area->nr_free--;
-		list_del(&page->lru);
-		rmv_page_order(page);
-
-		expand(zone, page, order, current_order, area,
-					start_migratetype);
-		/*
-		 * The freepage_migratetype may differ from pageblock's
-		 * migratetype depending on the decisions in
-		 * try_to_steal_freepages(). This is OK as long as it
-		 * does not differ for MIGRATE_CMA pageblocks. For CMA
-		 * we need to make sure unallocated pages flushed from
-		 * pcp lists are returned to the correct freelist.
-		 */
-		set_freepage_migratetype(page, start_migratetype);
+		else
+			list_move(&page->lru, &area->free_list[start_migratetype]);
 
 		trace_mm_page_alloc_extfrag(page, order, current_order,
 			start_migratetype, fallback_mt);
 
-		return page;
+		return true;
 	}
 
-	return NULL;
+	return false;
 }
 
 /*
@@ -1645,27 +1634,29 @@ static struct page *__rmqueue(struct zone *zone, unsigned int order,
 {
 	struct page *page;
 
-retry_reserve:
+retry:
 	page = __rmqueue_smallest(zone, order, migratetype);
 
 	if (unlikely(!page) && migratetype != MIGRATE_RESERVE) {
-		if (migratetype == MIGRATE_MOVABLE)
+		if (migratetype == MIGRATE_MOVABLE) {
 			page = __rmqueue_cma_fallback(zone, order);
-
-		if (!page)
-			page = __rmqueue_fallback(zone, order, migratetype);
-
-		/*
-		 * Use MIGRATE_RESERVE rather than fail an allocation. goto
-		 * is used because __rmqueue_smallest is an inline function
-		 * and we want just one call site
-		 */
-		if (!page) {
-			migratetype = MIGRATE_RESERVE;
-			goto retry_reserve;
+			if (page)
+				goto out;
 		}
+
+		if (!steal_fallback(zone, order, migratetype)) {
+			/*
+		 	 * Use MIGRATE_RESERVE rather than fail an allocation.
+		 	 * goto is used because __rmqueue_smallest is an inline
+		 	 * function and we want just one call site
+		 	 */
+			migratetype = MIGRATE_RESERVE;
+		}
+
+		goto retry;
 	}
 
+out:
 	trace_mm_page_alloc_zone_locked(page, order, migratetype);
 	return page;
 }
