@@ -14,17 +14,43 @@
 #include <linux/mempool.h>
 #include <linux/blkdev.h>
 #include <linux/writeback.h>
+#include <linux/kasan.h>
+
+static void kasan_poison_element(mempool_t *pool, void *element)
+{
+	if (pool->alloc == mempool_alloc_slab)
+		kasan_slab_free(pool->pool_data, element);
+	if (pool->alloc == mempool_kmalloc)
+		kasan_kfree(element);
+	if (pool->alloc == mempool_alloc_pages)
+		kasan_free_pages(element, (unsigned long)pool->pool_data);
+}
+
+static void kasan_unpoison_element(mempool_t *pool, void *element)
+{
+	if (pool->alloc == mempool_alloc_slab)
+		kasan_slab_alloc(pool->pool_data, element);
+	if (pool->alloc == mempool_kmalloc)
+		kasan_krealloc(element, (size_t)pool->pool_data);
+	if (pool->alloc == mempool_alloc_pages)
+		kasan_alloc_pages(element, (unsigned long)pool->pool_data);
+}
 
 static void add_element(mempool_t *pool, void *element)
 {
 	BUG_ON(pool->curr_nr >= pool->min_nr);
+	kasan_poison_element(pool, element);
 	pool->elements[pool->curr_nr++] = element;
 }
 
 static void *remove_element(mempool_t *pool)
 {
+	void *element;
+
 	BUG_ON(pool->curr_nr <= 0);
-	return pool->elements[--pool->curr_nr];
+	element = pool->elements[--pool->curr_nr];
+	kasan_unpoison_element(pool, element);
+	return element;
 }
 
 static void free_pool(mempool_t *pool)
