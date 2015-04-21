@@ -125,11 +125,10 @@ get_page_types_data | awk -v max_order="$MAX_ORDER" '
 		match($2, /______________________________________/);
 		if (RSTART) {
 			skip_typed_pfn = true;
-			if (rshift(typed_pfn, max_order) == rshift(pfn, max_order))
-				print_pfn_type(pfn, type);
-			else
-				print_pfn_type(pfn, "unknown");
+			if (rshift(typed_pfn, max_order) != rshift(pfn, max_order))
+				type = "unknown";
 
+			print_pfn_type(pfn, type);
 			next;
 		}
 
@@ -219,6 +218,10 @@ get_bitmap()
 			next;
 
 		for (i = 0; i < max_order_nr; i++) {
+			if (i % line_max == 0) {
+				printf("%10x: ", pfn - pfn % max_order_nr + i);
+			}
+
 			printf("%s", symbol(arr[i]));
 			if (i % line_max == line_max - 1)
 				printf("\n");
