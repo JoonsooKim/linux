@@ -329,7 +329,7 @@ get_summary()
 		}
 		printf("\n");
 
-		printf("%12s:\t", "Swap");
+		printf("%12s:\t", "Reclaim");
 		for (i = 0; i < max_order + 1; i++) {
 			printf("%d\t", ordered_pages_reclaim[i]);
 		}
