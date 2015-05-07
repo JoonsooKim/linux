@@ -80,3 +80,4 @@ obj-$(CONFIG_PAGE_EXTENSION) += page_ext.o
 obj-$(CONFIG_CMA_DEBUGFS) += cma_debug.o
 obj-y			+= highalloc-test.o
 obj-y			+= fragmentation-test.o
+obj-y			+= fragalloc-test.o
