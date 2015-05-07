@@ -83,3 +83,4 @@ obj-$(CONFIG_IDLE_PAGE_TRACKING) += page_idle.o
 obj-$(CONFIG_FRAME_VECTOR) += frame_vector.o
 obj-y			+= highalloc-test.o
 obj-y			+= fragmentation-test.o
+obj-y			+= fragalloc-test.o
