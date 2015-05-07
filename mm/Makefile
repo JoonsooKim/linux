@@ -102,3 +102,4 @@ obj-$(CONFIG_DEBUG_PAGE_REF) += debug_page_ref.o
 obj-y			+= slab_test.o
 obj-y			+= highalloc-test.o
 obj-y			+= fragmentation-test.o
+obj-y			+= fragalloc-test.o
