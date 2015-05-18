@@ -1470,9 +1470,9 @@ int move_freepages_block(struct zone *zone, struct page *page,
 
 	/* Do not cross zone boundaries */
 	if (!zone_spans_pfn(zone, start_pfn))
-		start_page = page;
+		start_page = pfn_to_page(zone->zone_start_pfn);
 	if (!zone_spans_pfn(zone, end_pfn))
-		return 0;
+		end_page = pfn_to_page(zone_end_pfn(zone));
 
 	return move_freepages(zone, start_page, end_page, migratetype);
 }
