@@ -455,6 +455,7 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 	unsigned long flags = 0;
 	bool locked = false;
 	unsigned long blockpfn = *start_pfn;
+	unsigned long freepage_order;
 
 	cursor = pfn_to_page(blockpfn);
 
@@ -481,6 +482,20 @@ static unsigned long isolate_freepages_block(struct compact_control *cc,
 			valid_page = page;
 		if (!PageBuddy(page))
 			goto isolate_fail;
+
+		if (!strict && cc->order != -1) {
+			freepage_order = page_order_unsafe(page);
+
+			if (freepage_order > 0 && freepage_order < MAX_ORDER) {
+				/*
+				 * Do not use high order freepage for migration
+				 * taret. It would not be beneficial for
+				 * compaction success rate.
+				 */
+				if (freepage_order >= cc->order)
+					goto isolate_fail;
+			}
+		}
 
 		/*
 		 * If we already hold the lock, we can skip some rechecking.
