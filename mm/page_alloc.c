@@ -308,14 +308,24 @@ static inline bool update_defer_init(pg_data_t *pgdat,
 #endif
 
 
-void set_pageblock_migratetype(struct page *page, int migratetype)
+void set_pageblock_migratetype(struct page *page, int migratetype, bool init)
 {
+	int start_mt;
+	struct zone *zone = page_zone(page);
+
 	if (unlikely(page_group_by_mobility_disabled &&
 		     migratetype < MIGRATE_PCPTYPES))
 		migratetype = MIGRATE_UNMOVABLE;
 
 	set_pageblock_flags_group(page, (unsigned long)migratetype,
 					PB_migrate, PB_migrate_end);
+
+	if (!init) {
+		start_mt = get_pageblock_migratetype(page);
+		zone->nr_pageblocks[start_mt]--;
+	}
+
+	zone->nr_pageblocks[migratetype]++;
 }
 
 #ifdef CONFIG_DEBUG_VM
@@ -1060,7 +1070,7 @@ static void __init deferred_free_range(struct page *page,
 	/* Free a large naturally-aligned chunk if possible */
 	if (nr_pages == MAX_ORDER_NR_PAGES &&
 	    (pfn & (MAX_ORDER_NR_PAGES-1)) == 0) {
-		set_pageblock_migratetype(page, MIGRATE_MOVABLE);
+		set_pageblock_migratetype(page, MIGRATE_MOVABLE, true);
 		__free_pages_boot_core(page, pfn, MAX_ORDER-1);
 		return;
 	}
@@ -1217,7 +1227,7 @@ void __init init_cma_reserved_pageblock(struct page *page)
 		set_page_count(p, 0);
 	} while (++p, --i);
 
-	set_pageblock_migratetype(page, MIGRATE_CMA);
+	set_pageblock_migratetype(page, MIGRATE_CMA, true);
 
 	if (pageblock_order >= MAX_ORDER) {
 		i = pageblock_nr_pages;
@@ -1483,7 +1493,7 @@ static void change_pageblock_range(struct page *pageblock_page,
 	int nr_pageblocks = 1 << (start_order - pageblock_order);
 
 	while (nr_pageblocks--) {
-		set_pageblock_migratetype(pageblock_page, migratetype);
+		set_pageblock_migratetype(pageblock_page, migratetype, false);
 		pageblock_page += pageblock_nr_pages;
 	}
 }
@@ -1550,7 +1560,7 @@ static void steal_suitable_fallback(struct zone *zone, struct page *page,
 	/* Claim the whole block if over half of it is free */
 	if (pages >= (1 << (pageblock_order-1)) ||
 			page_group_by_mobility_disabled)
-		set_pageblock_migratetype(page, start_type);
+		set_pageblock_migratetype(page, start_type, false);
 }
 
 /*
@@ -2009,7 +2019,7 @@ int __isolate_free_page(struct page *page, unsigned int order)
 			int mt = get_pageblock_migratetype(page);
 			if (!is_migrate_isolate(mt) && !is_migrate_cma(mt))
 				set_pageblock_migratetype(page,
-							  MIGRATE_MOVABLE);
+							  MIGRATE_MOVABLE, false);
 		}
 	}
 
@@ -4588,7 +4598,7 @@ static void setup_zone_migrate_reserve(struct zone *zone)
 			/* Suitable for reserving if this block is movable */
 			if (block_migratetype == MIGRATE_MOVABLE) {
 				set_pageblock_migratetype(page,
-							MIGRATE_RESERVE);
+							MIGRATE_RESERVE, false);
 				move_freepages_block(zone, page,
 							MIGRATE_RESERVE);
 				reserve--;
@@ -4607,7 +4617,7 @@ static void setup_zone_migrate_reserve(struct zone *zone)
 		 * take it back
 		 */
 		if (block_migratetype == MIGRATE_RESERVE) {
-			set_pageblock_migratetype(page, MIGRATE_MOVABLE);
+			set_pageblock_migratetype(page, MIGRATE_MOVABLE, false);
 			move_freepages_block(zone, page, MIGRATE_MOVABLE);
 		}
 	}
@@ -4665,7 +4675,7 @@ void __meminit memmap_init_zone(unsigned long size, int nid, unsigned long zone,
 			struct page *page = pfn_to_page(pfn);
 
 			__init_single_page(page, pfn, zone, nid);
-			set_pageblock_migratetype(page, MIGRATE_MOVABLE);
+			set_pageblock_migratetype(page, MIGRATE_MOVABLE, true);
 		} else {
 			__init_single_pfn(pfn, zone, nid);
 		}

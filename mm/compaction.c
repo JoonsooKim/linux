@@ -1865,7 +1865,7 @@ static void empty_pageblock(struct antifrag_req *req)
 	}
 
 	spin_lock_irq(&zone->lock);
-	set_pageblock_migratetype(base_page, req->mt);
+	set_pageblock_migratetype(base_page, req->mt, false);
 	spin_unlock_irq(&zone->lock);
 
 	pfn = block_start_pfn;

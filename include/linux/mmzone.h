@@ -366,6 +366,7 @@ struct zone {
 	 */
 	unsigned long		*pageblock_flags;
 #endif /* CONFIG_SPARSEMEM */
+	int nr_pageblocks[MIGRATE_TYPES];
 
 #ifdef CONFIG_NUMA
 	/*
