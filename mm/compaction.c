@@ -1783,6 +1783,22 @@ void submit_antifrag_work(struct zone *zone, unsigned long base_pfn,
 	queue_work(system_highpri_wq, &req->antifrag_work);
 }
 
+static bool too_little_movable_pageblock(struct zone *zone)
+{
+	int i;
+	unsigned long nr_pageblocks = 0;
+	unsigned long nr_movable_pageblocks =
+		zone->nr_pageblocks[MIGRATE_MOVABLE];
+
+	for (i = 0; i < MIGRATE_TYPES; i++)
+		nr_pageblocks += zone->nr_pageblocks[i];
+	
+	if (nr_movable_pageblocks < nr_pageblocks / 2)
+		return true;
+	
+	return false;
+}
+
 static bool valid_emptying_pageblock(struct zone *zone,
 				unsigned long moved_pages,
 				unsigned long block_start_pfn,
@@ -1853,6 +1869,15 @@ static void empty_pageblock(struct antifrag_req *req)
 	block_start_pfn = max(zone->zone_start_pfn, block_start_pfn);
 	block_end_pfn = block_start_pfn + pageblock_nr_pages;
 	block_end_pfn = min(zone_end_pfn(zone), block_end_pfn);
+
+	if (too_little_movable_pageblock(zone)) {
+		pr_debug("%s: %d: %d: emptying skipped (0x%lx, %d, %lu, %lu)\n",
+			__func__, req->node, smp_processor_id(),
+			req->base_pfn, req->mt, req->moved_pages,
+			(unsigned long)0);
+
+		return;
+	}
 
 	if (!valid_emptying_pageblock(zone, req->moved_pages,
 			block_start_pfn, block_end_pfn)) {
