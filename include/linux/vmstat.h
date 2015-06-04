@@ -73,6 +73,7 @@ static inline void __count_vm_events(enum vm_event_item item, long delta)
 static inline void all_vm_events(unsigned long *ret)
 {
 }
+
 static inline void vm_events_fold_cpu(int cpu)
 {
 }
