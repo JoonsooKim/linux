@@ -62,6 +62,31 @@ void all_vm_events(unsigned long *ret)
 }
 EXPORT_SYMBOL_GPL(all_vm_events);
 
+static unsigned long sum_vm_event(int i)
+{
+	int cpu;
+	unsigned long sum = 0;
+
+	for_each_online_cpu(cpu) {
+		struct vm_event_state *this = &per_cpu(vm_event_states, cpu);
+
+		sum += this->event[i];
+	}
+
+	return sum;
+}
+
+unsigned long vm_event(int i)
+{
+	unsigned long sum;
+
+	get_online_cpus();
+	sum = sum_vm_event(i);
+	put_online_cpus();
+
+	return sum;
+}
+
 /*
  * Fold the foreign cpu events into our own.
  *
