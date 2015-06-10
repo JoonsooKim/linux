@@ -250,17 +250,31 @@ void reset_isolation_suitable(pg_data_t *pgdat)
 	}
 }
 
+static inline void
+update_cached_migrate_pfn(struct zone *zone, unsigned long pfn,
+						enum migrate_mode mode)
+{
+	if (pfn > zone->compact_cached_migrate_pfn[0])
+		zone->compact_cached_migrate_pfn[0] = pfn;
+	if (mode != MIGRATE_ASYNC &&
+	    pfn > zone->compact_cached_migrate_pfn[1])
+		zone->compact_cached_migrate_pfn[1] = pfn;
+}
+
+static inline void
+update_cached_free_pfn(struct zone *zone, unsigned long pfn)
+{
+	if (pfn < zone->compact_cached_free_pfn)
+		zone->compact_cached_free_pfn = pfn;
+}
+
 /*
  * If no pages were isolated then mark this pageblock to be skipped in the
  * future. The information is later cleared by __reset_isolation_suitable().
  */
 static void update_pageblock_skip(struct compact_control *cc,
-			struct page *page, unsigned long nr_isolated,
-			bool migrate_scanner)
+			struct page *page, unsigned long nr_isolated)
 {
-	struct zone *zone = cc->zone;
-	unsigned long pfn;
-
 	if (cc->ignore_skip_hint)
 		return;
 
@@ -271,20 +285,6 @@ static void update_pageblock_skip(struct compact_control *cc,
 		return;
 
 	set_pageblock_skip(page);
-
-	pfn = page_to_pfn(page);
-
-	/* Update where async and sync compaction should restart */
-	if (migrate_scanner) {
-		if (pfn > zone->compact_cached_migrate_pfn[0])
-			zone->compact_cached_migrate_pfn[0] = pfn;
-		if (cc->mode != MIGRATE_ASYNC &&
-		    pfn > zone->compact_cached_migrate_pfn[1])
-			zone->compact_cached_migrate_pfn[1] = pfn;
-	} else {
-		if (pfn < zone->compact_cached_free_pfn)
-			zone->compact_cached_free_pfn = pfn;
-	}
 }
 #else
 static inline bool isolation_suitable(struct compact_control *cc,
@@ -294,8 +294,7 @@ static inline bool isolation_suitable(struct compact_control *cc,
 }
 
 static void update_pageblock_skip(struct compact_control *cc,
-			struct page *page, unsigned long nr_isolated,
-			bool migrate_scanner)
+			struct page *page, unsigned long nr_isolated)
 {
 }
 #endif /* CONFIG_COMPACTION */
@@ -529,7 +528,7 @@ isolate_fail:
 
 	/* Update the pageblock-skip if the whole pageblock was scanned */
 	if (blockpfn == end_pfn)
-		update_pageblock_skip(cc, valid_page, total_isolated, false);
+		update_pageblock_skip(cc, valid_page, total_isolated);
 
 	count_compact_events(COMPACTFREE_SCANNED, nr_scanned);
 	if (total_isolated)
@@ -833,11 +832,11 @@ isolate_success:
 		spin_unlock_irqrestore(&zone->lru_lock, flags);
 
 	/*
-	 * Update the pageblock-skip information and cached scanner pfn,
-	 * if the whole pageblock was scanned without isolating any page.
+	 * Update the pageblock-skip information if the whole pageblock
+	 * was scanned without isolating any page.
 	 */
 	if (low_pfn == end_pfn)
-		update_pageblock_skip(cc, valid_page, nr_isolated, true);
+		update_pageblock_skip(cc, valid_page, nr_isolated);
 
 	trace_mm_compaction_isolate_migratepages(start_pfn, low_pfn,
 						nr_scanned, nr_isolated);
@@ -947,6 +946,7 @@ static void isolate_freepages(struct compact_control *cc)
 	unsigned long block_end_pfn;	/* end of current pageblock */
 	unsigned long low_pfn;	     /* lowest pfn scanner is able to scan */
 	struct list_head *freelist = &cc->freepages;
+	unsigned long nr_isolated;
 
 	/*
 	 * Initialise the free scanner. The starting point is where we last
@@ -998,8 +998,12 @@ static void isolate_freepages(struct compact_control *cc)
 			continue;
 
 		/* Found a block suitable for isolating free pages from. */
-		isolate_freepages_block(cc, &isolate_start_pfn,
+		nr_isolated = isolate_freepages_block(cc, &isolate_start_pfn,
 					block_end_pfn, freelist, false);
+
+		/* Update cached pfn not to rescan non-successful pageblock */
+		if (isolate_start_pfn == block_end_pfn && !nr_isolated)
+			update_cached_free_pfn(zone, block_start_pfn);
 
 		/*
 		 * If we isolated enough freepages, or aborted due to async
@@ -1170,6 +1174,12 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 		 */
 		if (cc->nr_migratepages && !cc->last_migrated_pfn)
 			cc->last_migrated_pfn = isolate_start_pfn;
+
+		/* Update cached pfn not to rescan non-successful pageblock */
+		if (low_pfn == end_pfn && !cc->nr_migratepages) {
+			update_cached_migrate_pfn(zone,
+					isolate_start_pfn, cc->mode);
+		}
 
 		/*
 		 * Either we isolated something and proceed with migration. Or
