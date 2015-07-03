@@ -2003,7 +2003,7 @@ int __isolate_free_page(struct page *page, unsigned int order)
 	zone->free_area[order].nr_free--;
 	rmv_page_order(page);
 
-	set_page_owner(page, order, 0);
+	set_page_owner(page, order, __GFP_MOVABLE);
 
 	/* Set the pageblock if the isolated page is at least a pageblock */
 	if (order >= pageblock_order - 1) {
@@ -2034,6 +2034,7 @@ int split_free_page(struct page *page)
 {
 	unsigned int order;
 	int nr_pages;
+	int i;
 
 	order = page_order(page);
 
@@ -2044,6 +2045,9 @@ int split_free_page(struct page *page)
 	/* Split into individual pages */
 	set_page_refcounted(page);
 	split_page(page, order);
+	for (i = 0; i < (1 << order); i++) {
+		set_page_owner(page + i, 0, __GFP_MOVABLE);
+	}
 	return nr_pages;
 }
 
