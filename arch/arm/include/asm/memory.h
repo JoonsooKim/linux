@@ -33,7 +33,11 @@
  * TASK_UNMAPPED_BASE - the lower boundary of the mmap VM area
  */
 #define PAGE_OFFSET		UL(CONFIG_PAGE_OFFSET)
+#ifndef CONFIG_KASAN
 #define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(0x01000000))
+#else
+#define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(0x01000000) - UL(0x20000000))
+#endif
 #define TASK_UNMAPPED_BASE	(UL(CONFIG_PAGE_OFFSET) / 3)
 
 /*
@@ -212,6 +216,10 @@ static inline unsigned long __phys_to_virt(unsigned long x)
  * of RAM in the mem_map as well.
  */
 #define PHYS_PFN_OFFSET	(PHYS_OFFSET >> PAGE_SHIFT)
+
+#define virt_to_pfn(kaddr)	\
+         ((((unsigned long)(kaddr) - PAGE_OFFSET) >> PAGE_SHIFT) +	\
+                  PHYS_PFN_OFFSET)
 
 /*
  * These are *only* valid on the kernel direct mapped RAM memory.

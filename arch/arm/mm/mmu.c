@@ -25,6 +25,7 @@
 #include <asm/tlb.h>
 #include <asm/highmem.h>
 #include <asm/traps.h>
+#include <asm/kasan.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -757,7 +758,7 @@ static int __init early_vmalloc(char *arg)
 }
 early_param("vmalloc", early_vmalloc);
 
-static phys_addr_t lowmem_limit __initdata = 0;
+phys_addr_t lowmem_limit __initdata = 0;
 
 void __init sanity_check_meminfo(void)
 {
@@ -863,12 +864,16 @@ static inline void prepare_page_table(void)
 	/*
 	 * Clear out all the mappings below the kernel image.
 	 */
-	for (addr = 0; addr < MODULES_VADDR; addr += PGDIR_SIZE)
+	for (addr = 0; addr < TASK_SIZE; addr += PGDIR_SIZE)
 		pmd_clear(pmd_off_k(addr));
 
 #ifdef CONFIG_XIP_KERNEL
 	/* The XIP kernel is mapped in the module area -- skip over it */
 	addr = ((unsigned long)_etext + PGDIR_SIZE - 1) & PGDIR_MASK;
+#endif
+#ifdef CONFIG_KASAN
+	/* Skip shadow memory address */
+	addr = MODULES_VADDR;
 #endif
 	for ( ; addr < PAGE_OFFSET; addr += PGDIR_SIZE)
 		pmd_clear(pmd_off_k(addr));
@@ -1049,4 +1054,5 @@ void __init paging_init(struct machine_desc *mdesc)
 
 	empty_zero_page = virt_to_page(zero_page);
 	__flush_dcache_page(NULL, empty_zero_page);
+	kasan_init();
 }

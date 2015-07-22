@@ -109,8 +109,13 @@
 	.endm
 
 	.macro	get_thread_info, rd
+#ifndef CONFIG_KASAN
 	mov	\rd, sp, lsr #13
 	mov	\rd, \rd, lsl #13
+#else
+	mov	\rd, sp, lsr #14
+	mov	\rd, \rd, lsl #14
+#endif
 	.endm
 
 	@

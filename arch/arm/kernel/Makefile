@@ -11,6 +11,8 @@ endif
 
 CFLAGS_REMOVE_return_address.o = -pg
 
+KASAN_SANITIZE_stacktrace.o := n
+
 # Object file lists.
 
 obj-y		:= elf.o entry-armv.o entry-common.o irq.o \

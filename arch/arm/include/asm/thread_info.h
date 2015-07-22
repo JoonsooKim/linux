@@ -15,8 +15,18 @@
 #include <linux/compiler.h>
 #include <asm/fpstate.h>
 
+#ifndef CONFIG_KASAN
 #define THREAD_SIZE_ORDER	1
+#else
+#define THREAD_SIZE_ORDER	2
+#endif
+
+#ifndef CONFIG_KASAN
 #define THREAD_SIZE		8192
+#else
+#define THREAD_SIZE		16384
+#endif
+
 #define THREAD_START_SP		(THREAD_SIZE - 8)
 
 #ifndef __ASSEMBLY__

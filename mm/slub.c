@@ -2812,6 +2812,9 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 	 * each object to conform to the alignment.
 	 */
 	size = ALIGN(size, align);
+#ifdef CONFIG_KASAN
+	size = ALIGN(size, 1UL << KASAN_SHADOW_SCALE_SHIFT);
+#endif
 	s->size = size;
 	if (forced_order >= 0)
 		order = forced_order;

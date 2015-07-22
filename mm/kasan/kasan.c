@@ -34,6 +34,8 @@
 #include <linux/slub_def.h>
 #include <linux/vmalloc.h>
 
+#include <asm/unaligned.h>
+
 #include "kasan.h"
 
 /*
@@ -433,6 +435,9 @@ int kasan_module_alloc(void *addr, size_t size)
 	if (WARN_ON(!IS_ALIGNED(shadow_start, PAGE_SIZE)))
 		return -EINVAL;
 
+	if (IS_ENABLED(CONFIG_ARM))
+		return 0;
+
 	ret = __vmalloc_node_range(shadow_size, 1, shadow_start,
 			shadow_start + shadow_size,
 			GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO,
@@ -456,6 +461,15 @@ void kasan_free_shadow(const struct vm_struct *vm)
 static void register_global(struct kasan_global *global)
 {
 	size_t aligned_size = round_up(global->size, KASAN_SHADOW_SCALE_SIZE);
+
+	/*
+	 * Currently we do not allocate shadow for vmalloc area
+	 * Skip globals that in modules in vmalloc area.
+	 */
+	if (IS_ENABLED(CONFIG_ARM) &&
+		(unsigned long)global->beg >= VMALLOC_START &&
+		(unsigned long)global->beg < VMALLOC_END)
+		return;
 
 	kasan_unpoison_shadow(global->beg, global->size);
 
