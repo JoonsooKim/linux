@@ -101,6 +101,9 @@ __mmap_switched:
 	cmp	r7, #0
 	bicne	r4, r0, #CR_A			@ Clear 'A' bit
 	stmneia	r7, {r0, r4}			@ Save control register values
+#ifdef CONFIG_KASAN
+	b	kasan_early_init		@ Never return
+#endif
 	b	start_kernel
 ENDPROC(__mmap_switched)
 

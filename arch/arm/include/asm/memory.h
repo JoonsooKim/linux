@@ -39,7 +39,11 @@
  * TASK_SIZE - the maximum size of a user space task.
  * TASK_UNMAPPED_BASE - the lower boundary of the mmap VM area
  */
+#ifndef CONFIG_KASAN
 #define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M))
+#else
+#define TASK_SIZE		(UL(CONFIG_PAGE_OFFSET) - UL(SZ_16M) - UL(SZ_512M))
+#endif
 #define TASK_UNMAPPED_BASE	ALIGN(TASK_SIZE / 3, SZ_16M)
 
 /*
@@ -266,6 +270,10 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
  * of RAM in the mem_map as well.
  */
 #define PHYS_PFN_OFFSET	((unsigned long)(PHYS_OFFSET >> PAGE_SHIFT))
+
+#define virt_to_pfn(kaddr)	\
+         ((((unsigned long)(kaddr) - PAGE_OFFSET) >> PAGE_SHIFT) +	\
+                  PHYS_PFN_OFFSET)
 
 /*
  * These are *only* valid on the kernel direct mapped RAM memory.
