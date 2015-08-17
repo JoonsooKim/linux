@@ -130,6 +130,7 @@ static struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 /* Do not skip compaction more than 64 times */
 #define COMPACT_MAX_DEFER_SHIFT 6
 #define COMPACT_MIN_DEPLETE_THRESHOLD 1UL
+#define COMPACT_MIN_SCAN_LIMIT (pageblock_nr_pages)
 
 static bool compaction_depleted(struct zone *zone)
 {
@@ -147,6 +148,42 @@ static bool compaction_depleted(struct zone *zone)
 	return true;
 }
 
+static void set_migration_scan_limit(struct compact_control *cc)
+{
+	struct zone *zone = cc->zone;
+	int order = cc->order;
+	unsigned long limit;
+
+	cc->migration_scan_limit = LONG_MAX;
+	if (order < 0)
+		return;
+
+	if (!test_bit(ZONE_COMPACTION_DEPLETED, &zone->flags))
+		return;
+
+	if (!zone->compact_depletion_depth)
+		return;
+
+	/*
+	 * Experimental observation shows that migration scanner
+	 * normally scans 1/4 pages
+	 */
+	limit = zone->managed_pages >> 2;
+
+	/*
+	 * Deferred compaction restart compaction every 64 compaction
+	 * attempts and it rescans whole zone range. If we limit
+	 * migration scanner to scan 1/64 range when depleted, 64
+	 * compaction attempts will rescan whole zone range as same
+	 * as deferred compaction.
+	 */
+	limit >>= 6;
+	limit = max(limit, COMPACT_MIN_SCAN_LIMIT);
+
+	/* Degradation scan limit according to depletion depth. */
+	limit >>= zone->compact_depletion_depth;
+	cc->migration_scan_limit = max(limit, COMPACT_CLUSTER_MAX);
+}
 /*
  * Compaction is deferred when compaction fails to result in a page
  * allocation success. 1 << compact_defer_limit compactions are skipped up
@@ -839,6 +876,8 @@ isolate_success:
 		update_pageblock_skip(cc, valid_page, nr_isolated,
 					end_pfn, true);
 
+	cc->migration_scan_limit -= nr_scanned;
+
 	trace_mm_compaction_isolate_migratepages(start_pfn, low_pfn,
 						nr_scanned, nr_isolated);
 
@@ -1366,6 +1405,8 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 		zone->compact_cached_migrate_pfn[0] = cc->migrate_pfn;
 		zone->compact_cached_migrate_pfn[1] = cc->migrate_pfn;
 	}
+
+	set_migration_scan_limit(cc);
 
 	trace_mm_compaction_begin(start_pfn, cc->migrate_pfn,
 				cc->free_pfn, end_pfn, sync);
