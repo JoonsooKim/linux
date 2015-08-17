@@ -219,12 +219,15 @@ bool compaction_restarting(struct zone *zone, int order)
 
 /* Returns true if the pageblock should be scanned for pages to isolate. */
 static inline bool isolation_suitable(struct compact_control *cc,
-					struct page *page)
+					struct page *page, bool migrate_scanner)
 {
 	if (cc->ignore_skip_hint)
 		return true;
 
-	return !get_pageblock_skip(page);
+	if (migrate_scanner)
+		return !get_pageblock_skip_migratescan(page);
+	else
+		return !get_pageblock_skip_freescan(page);
 }
 
 /*
@@ -275,7 +278,8 @@ static void __reset_isolation_suitable(struct zone *zone)
 		if (zone != page_zone(page))
 			continue;
 
-		clear_pageblock_skip(page);
+		clear_pageblock_skip_migratescan(page);
+		clear_pageblock_skip_freescan(page);
 	}
 }
 
@@ -317,24 +321,27 @@ static void update_pageblock_skip(struct compact_control *cc,
 	if (cc->migration_scan_limit == LONG_MAX && nr_isolated)
 		return;
 
-	if (!nr_isolated)
-		set_pageblock_skip(page);
-
 	/* Update where async and sync compaction should restart */
 	if (migrate_scanner) {
+		if (!nr_isolated)
+			set_pageblock_skip_migratescan(page);
+
 		if (pfn > zone->compact_cached_migrate_pfn[0])
 			zone->compact_cached_migrate_pfn[0] = pfn;
 		if (cc->mode != MIGRATE_ASYNC &&
 		    pfn > zone->compact_cached_migrate_pfn[1])
 			zone->compact_cached_migrate_pfn[1] = pfn;
 	} else {
+		if (!nr_isolated)
+			set_pageblock_skip_freescan(page);
+
 		if (pfn < zone->compact_cached_free_pfn)
 			zone->compact_cached_free_pfn = pfn;
 	}
 }
 #else
 static inline bool isolation_suitable(struct compact_control *cc,
-					struct page *page)
+					struct page *page, bool migrate_scanner)
 {
 	return true;
 }
@@ -1015,7 +1022,7 @@ static void isolate_freepages(struct compact_control *cc)
 			continue;
 
 		/* If isolation recently failed, do not retry */
-		if (!isolation_suitable(cc, page))
+		if (!isolation_suitable(cc, page, false))
 			continue;
 
 		/* Found a block suitable for isolating free pages from. */
@@ -1154,7 +1161,7 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 			continue;
 
 		/* If isolation recently failed, do not retry */
-		if (!isolation_suitable(cc, page))
+		if (!isolation_suitable(cc, page, true))
 			continue;
 
 		/*

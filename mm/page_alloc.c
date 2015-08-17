@@ -6623,7 +6623,8 @@ void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 	unsigned long bitidx, word_bitidx;
 	unsigned long old_word, word;
 
-	BUILD_BUG_ON(NR_PAGEBLOCK_BITS != 4);
+	BUILD_BUG_ON(NR_PAGEBLOCK_BITS != 8);
+	BUILD_BUG_ON(NR_MIGRATETYPE_BITS != 4);
 
 	zone = page_zone(page);
 	bitmap = get_pageblock_bitmap(zone, pfn);

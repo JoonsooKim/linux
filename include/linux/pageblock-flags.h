@@ -30,14 +30,21 @@ enum pageblock_bits {
 	PB_migrate,
 	PB_migrate_end = PB_migrate + 3 - 1,
 			/* 3 bits required for migrate types */
-	PB_migrate_skip,/* If set the block is skipped by compaction */
+	PB_padding1,	/* Padding for 4 byte aligned migrate types */
+	NR_MIGRATETYPE_BITS,
 
+	PB_skip_migratescan = 4,/* If set the block is skipped by compaction */
+	PB_skip_freescan,
+	PB_padding2,
+	PB_padding3,
 	/*
 	 * Assume the bits will always align on a word. If this assumption
 	 * changes then get/set pageblock needs updating.
 	 */
 	NR_PAGEBLOCK_BITS
 };
+
+#define MIGRATETYPE_MASK ((1UL << NR_MIGRATETYPE_BITS) - 1)
 
 #ifdef CONFIG_HUGETLB_PAGE
 
@@ -87,15 +94,25 @@ void set_pfnblock_flags_mask(struct page *page,
 			(1 << (end_bitidx - start_bitidx + 1)) - 1)
 
 #ifdef CONFIG_COMPACTION
-#define get_pageblock_skip(page) \
-			get_pageblock_flags_group(page, PB_migrate_skip,     \
-							PB_migrate_skip)
-#define clear_pageblock_skip(page) \
-			set_pageblock_flags_group(page, 0, PB_migrate_skip,  \
-							PB_migrate_skip)
-#define set_pageblock_skip(page) \
-			set_pageblock_flags_group(page, 1, PB_migrate_skip,  \
-							PB_migrate_skip)
+#define get_pageblock_skip_migratescan(page) \
+		get_pageblock_flags_group(page, PB_skip_migratescan,	\
+						PB_skip_migratescan)
+#define clear_pageblock_skip_migratescan(page) \
+		set_pageblock_flags_group(page, 0, PB_skip_migratescan,	\
+						PB_skip_migratescan)
+#define set_pageblock_skip_migratescan(page) \
+		set_pageblock_flags_group(page, 1, PB_skip_migratescan,	\
+						PB_skip_migratescan)
+#define get_pageblock_skip_freescan(page) \
+		get_pageblock_flags_group(page, PB_skip_freescan,	\
+						PB_skip_freescan)
+#define clear_pageblock_skip_freescan(page) \
+		set_pageblock_flags_group(page, 0, PB_skip_freescan,	\
+						PB_skip_freescan)
+#define set_pageblock_skip_freescan(page) \
+		set_pageblock_flags_group(page, 1, PB_skip_freescan,	\
+						PB_skip_freescan)
+
 #endif /* CONFIG_COMPACTION */
 
 #endif	/* PAGEBLOCK_FLAGS_H */
