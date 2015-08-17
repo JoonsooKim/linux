@@ -243,9 +243,17 @@ static void __reset_isolation_suitable(struct zone *zone)
 	zone->compact_cached_free_pfn = end_pfn;
 	zone->compact_blockskip_flush = false;
 
+	clear_bit(ZONE_COMPACTION_SCANALLFREE, &zone->flags);
 	if (compaction_depleted(zone)) {
 		if (test_bit(ZONE_COMPACTION_DEPLETED, &zone->flags))
 			zone->compact_depletion_depth++;
+
+			/* Last resort to make high-order page */
+			if (!zone->compact_success) {
+				set_bit(ZONE_COMPACTION_SCANALLFREE,
+					&zone->flags);
+			}
+
 		else {
 			set_bit(ZONE_COMPACTION_DEPLETED, &zone->flags);
 			zone->compact_depletion_depth = 0;
@@ -914,7 +922,8 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 #ifdef CONFIG_COMPACTION
 
 /* Returns true if the page is within a block suitable for migration to */
-static bool suitable_migration_target(struct page *page)
+static bool suitable_migration_target(struct compact_control *cc,
+					struct page *page)
 {
 	/* If the page is a large free page, then disallow migration */
 	if (PageBuddy(page)) {
@@ -929,6 +938,16 @@ static bool suitable_migration_target(struct page *page)
 
 	/* If the block is MIGRATE_MOVABLE or MIGRATE_CMA, allow migration */
 	if (migrate_async_suitable(get_pageblock_migratetype(page)))
+		return true;
+
+	/*
+	 * Allow to scan all kinds of pageblock. Without this relaxation,
+	 * all freepage could be in non-movable pageblock and compaction
+	 * can be satuarated and cannot make high-order page even if there
+	 * is enough freepage in the system.
+	 */
+	if (cc->mode != MIGRATE_ASYNC &&
+		test_bit(ZONE_COMPACTION_SCANALLFREE, &cc->zone->flags))
 		return true;
 
 	/* Otherwise skip the block */
@@ -992,7 +1011,7 @@ static void isolate_freepages(struct compact_control *cc)
 			continue;
 
 		/* Check the block is suitable for migration */
-		if (!suitable_migration_target(page))
+		if (!suitable_migration_target(cc, page))
 			continue;
 
 		/* If isolation recently failed, do not retry */
@@ -1494,6 +1513,10 @@ out:
 	if (test_bit(ZONE_COMPACTION_DEPLETED, &zone->flags)) {
 		if (!compaction_depleted(zone))
 			clear_bit(ZONE_COMPACTION_DEPLETED, &zone->flags);
+
+		if (zone->compact_success &&
+			test_bit(ZONE_COMPACTION_SCANALLFREE, &zone->flags))
+			clear_bit(ZONE_COMPACTION_SCANALLFREE, &zone->flags);
 	}
 
 	return ret;

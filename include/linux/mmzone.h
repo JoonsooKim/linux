@@ -545,6 +545,7 @@ enum zone_flags {
 					 */
 	ZONE_FAIR_DEPLETED,		/* fair zone policy batch depleted */
 	ZONE_COMPACTION_DEPLETED,	/* compaction possiblity depleted */
+	ZONE_COMPACTION_SCANALLFREE,	/* scan all kinds of pageblocks */
 };
 
 static inline unsigned long zone_end_pfn(const struct zone *zone)
