@@ -155,7 +155,7 @@ enum {
 };
 
 #define SWAP_CLUSTER_MAX 256UL
-#define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
+#define COMPACT_CLUSTER_MAX 32UL
 
 /*
  * Ratio between zone->managed_pages and the "gap" that above the per-zone
