@@ -133,6 +133,9 @@ static inline unsigned long zone_page_state(struct zone *zone,
 {
 	long x = atomic_long_read(&zone->vm_stat[item]);
 #ifdef CONFIG_SMP
+	long diff = this_cpu_read(zone->pageset->vm_stat_diff[item]);
+
+	x += diff;
 	if (x < 0)
 		x = 0;
 #endif
