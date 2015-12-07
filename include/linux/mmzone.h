@@ -519,6 +519,7 @@ struct zone {
 #endif
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
+	int			contiguous;
 	/* Set to true when the PG_migrate_skip bits should be cleared */
 	bool			compact_blockskip_flush;
 #endif

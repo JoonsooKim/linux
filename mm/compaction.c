@@ -88,7 +88,7 @@ static inline bool migrate_async_suitable(int migratetype)
  * the first and last page of a pageblock and avoid checking each individual
  * page in a pageblock.
  */
-static struct page *pageblock_pfn_to_page(unsigned long start_pfn,
+static struct page *__pageblock_pfn_to_page(unsigned long start_pfn,
 				unsigned long end_pfn, struct zone *zone)
 {
 	struct page *start_page;
@@ -112,6 +112,56 @@ static struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 		return NULL;
 
 	return start_page;
+}
+
+static inline struct page *pageblock_pfn_to_page(unsigned long start_pfn,
+				unsigned long end_pfn, struct zone *zone)
+{
+	if (zone->contiguous == 1)
+		return pfn_to_page(start_pfn);
+
+	return __pageblock_pfn_to_page(start_pfn, end_pfn, zone);
+}
+
+static void check_zone_contiguous(struct zone *zone)
+{
+	unsigned long block_start_pfn = zone->zone_start_pfn;
+	unsigned long block_end_pfn;
+	unsigned long pfn;
+
+	/* Already checked */
+	if (zone->contiguous)
+		return;
+
+	printk("%s: %s\n", __func__, zone->name);
+	block_end_pfn = ALIGN(block_start_pfn + 1, pageblock_nr_pages);
+	for (; block_start_pfn < zone_end_pfn(zone);
+		block_start_pfn = block_end_pfn,
+		block_end_pfn += pageblock_nr_pages) {
+
+		block_end_pfn = min(block_end_pfn, zone_end_pfn(zone));
+
+		if (!__pageblock_pfn_to_page(block_start_pfn,
+					block_end_pfn, zone)) {
+			/* We have hole */
+			zone->contiguous = -1;
+			printk("%s: %s: uncontiguous\n", __func__, zone->name);
+			return;
+		}
+
+		/* Check validity of pfn within pageblock */
+		for (pfn = block_start_pfn; pfn < block_end_pfn; pfn++) {
+			if (!pfn_valid_within(pfn)) {
+				zone->contiguous = -1;
+				printk("%s: %s: uncontiguous\n", __func__, zone->name);
+				return;
+			}
+		}
+	}
+
+	/* We don't have hole */
+	zone->contiguous = 1;
+	printk("%s: %s: contiguous\n", __func__, zone->name);
 }
 
 #ifdef CONFIG_COMPACTION
@@ -1414,6 +1464,8 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 		/* Fall through to compaction */
 		;
 	}
+
+	check_zone_contiguous(zone);
 
 	/*
 	 * Clear pageblock skip if there were failures recently and compaction
