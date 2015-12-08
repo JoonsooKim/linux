@@ -1002,8 +1002,10 @@ static void isolate_freepages(struct compact_control *cc)
 					block_end_pfn, freelist, false);
 
 		/* Update cached pfn not to rescan non-successful pageblock */
-		if (isolate_start_pfn == block_end_pfn && !nr_isolated)
-			update_cached_free_pfn(zone, block_start_pfn);
+		if (isolate_start_pfn == block_end_pfn && !nr_isolated) {
+			update_cached_free_pfn(zone,
+				block_start_pfn - pageblock_nr_pages);
+		}
 
 		/*
 		 * If we isolated enough freepages, or aborted due to async
@@ -1176,10 +1178,8 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 			cc->last_migrated_pfn = isolate_start_pfn;
 
 		/* Update cached pfn not to rescan non-successful pageblock */
-		if (low_pfn == end_pfn && !cc->nr_migratepages) {
-			update_cached_migrate_pfn(zone,
-					isolate_start_pfn, cc->mode);
-		}
+		if (low_pfn == end_pfn && !cc->nr_migratepages)
+			update_cached_migrate_pfn(zone, end_pfn, cc->mode);
 
 		/*
 		 * Either we isolated something and proceed with migration. Or
