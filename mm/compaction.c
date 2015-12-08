@@ -116,6 +116,67 @@ static struct page *pageblock_pfn_to_page(unsigned long start_pfn,
 
 #ifdef CONFIG_COMPACTION
 
+/*
+ * order == -1 is expected when compacting via
+ * /proc/sys/vm/compact_memory
+ */
+static inline bool is_via_compact_memory(int order)
+{
+	return order == -1;
+}
+
+#define COMPACT_MIN_SCAN_LIMIT (pageblock_nr_pages)
+
+static bool excess_migration_scan_limit(struct compact_control *cc)
+{
+	/* Disable scan limit for now */
+	return false;
+}
+
+static void set_migration_scan_limit(struct compact_control *cc)
+{
+	struct zone *zone = cc->zone;
+	int order = cc->order;
+	unsigned long limit = zone->managed_pages;
+
+	cc->migration_scan_limit = LONG_MAX;
+	if (is_via_compact_memory(order))
+		return;
+
+	if (order < zone->compact_order_failed)
+		return;
+
+	if (!zone->compact_defer_shift)
+		return;
+
+	/*
+	 * Do not allow async compaction during limit work. In this case,
+	 * async compaction would not be easy to succeed and we need to
+	 * ensure that COMPACT_COMPLETE occurs by sync compaction for
+	 * algorithm correctness and prevention of async compaction will
+	 * lead it.
+	 */
+	if (cc->mode == MIGRATE_ASYNC) {
+		cc->migration_scan_limit = -1;
+		return;
+	}
+
+	/* Migration scanner usually scans less than 1/4 pages */
+	limit >>= 2;
+
+	/*
+	 * Deferred compaction restart compaction every 64 compaction
+	 * attempts and it rescans whole zone range. To imitate it,
+	 * we set limit to 1/64 of scannable range.
+	 */
+	limit >>= 6;
+
+	/* Degradation scan limit according to defer shift */
+	limit >>= zone->compact_defer_shift;
+
+	cc->migration_scan_limit = max(limit, COMPACT_MIN_SCAN_LIMIT);
+}
+
 /* Do not skip compaction more than 64 times */
 #define COMPACT_MAX_DEFER_SHIFT 6
 
@@ -828,6 +889,8 @@ isolate_success:
 	if (locked)
 		spin_unlock_irqrestore(&zone->lru_lock, flags);
 
+	cc->migration_scan_limit -= nr_scanned;
+
 	/*
 	 * Update the pageblock-skip information if the whole pageblock
 	 * was scanned without isolating any page.
@@ -1174,8 +1237,13 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 		if (cc->nr_migratepages && !cc->last_migrated_pfn)
 			cc->last_migrated_pfn = isolate_start_pfn;
 
-		/* Update cached pfn not to rescan non-successful pageblock */
-		if (low_pfn == end_pfn && !cc->nr_migratepages)
+		/*
+		 * Update cached pfn not to rescan non-successful pageblock.
+		 * However, always update cached pfn if compaction has scan
+		 * limit, otherwise we would scan same range over and over.
+		 */
+		if (low_pfn == end_pfn && (!cc->nr_migratepages ||
+				cc->migration_scan_limit != LONG_MAX))
 			update_cached_migrate_pfn(zone, end_pfn, cc->mode);
 
 		/*
@@ -1191,15 +1259,6 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 	cc->migrate_pfn = low_pfn;
 
 	return cc->nr_migratepages ? ISOLATE_SUCCESS : ISOLATE_NONE;
-}
-
-/*
- * order == -1 is expected when compacting via
- * /proc/sys/vm/compact_memory
- */
-static inline bool is_via_compact_memory(int order)
-{
-	return order == -1;
 }
 
 static int __compact_finished(struct zone *zone, struct compact_control *cc,
@@ -1230,6 +1289,9 @@ static int __compact_finished(struct zone *zone, struct compact_control *cc,
 
 	if (is_via_compact_memory(cc->order))
 		return COMPACT_CONTINUE;
+
+	if (excess_migration_scan_limit(cc))
+		return COMPACT_PARTIAL;
 
 	/* Compaction run is not finished if the watermark is not met */
 	watermark = min_wmark_pages(zone);
@@ -1388,6 +1450,10 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 		zone->compact_cached_migrate_pfn[1] = cc->migrate_pfn;
 	}
 	cc->last_migrated_pfn = 0;
+
+	set_migration_scan_limit(cc);
+	if (excess_migration_scan_limit(cc))
+		return COMPACT_SKIPPED;
 
 	trace_mm_compaction_begin(start_pfn, cc->migrate_pfn,
 				cc->free_pfn, end_pfn, sync);
