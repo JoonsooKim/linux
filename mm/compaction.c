@@ -1235,7 +1235,7 @@ static int __compact_finished(struct zone *zone, struct compact_control *cc,
 		return COMPACT_CONTINUE;
 
 	/* Compaction run is not finished if the watermark is not met */
-	watermark = low_wmark_pages(zone);
+	watermark = min_wmark_pages(zone);
 
 	if (!zone_watermark_ok(zone, cc->order, watermark, cc->classzone_idx,
 							cc->alloc_flags))
@@ -1573,7 +1573,7 @@ unsigned long try_to_compact_pages(gfp_t gfp_mask, unsigned int order,
 		all_zones_contended &= zone_contended;
 
 		/* If a normal allocation would succeed, stop compacting */
-		if (zone_watermark_ok(zone, order, low_wmark_pages(zone),
+		if (zone_watermark_ok(zone, order, min_wmark_pages(zone),
 					ac->classzone_idx, alloc_flags)) {
 			/*
 			 * We think the allocation will succeed in this zone,
@@ -1675,7 +1675,7 @@ static void __compact_pgdat(pg_data_t *pgdat, struct compact_control *cc)
 			continue;
 
 		if (zone_watermark_ok(zone, cc->order,
-				low_wmark_pages(zone), 0, 0))
+				min_wmark_pages(zone), 0, 0))
 			compaction_defer_reset(zone, cc->order, false);
 	}
 }
