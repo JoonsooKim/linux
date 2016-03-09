@@ -71,6 +71,7 @@
 #include <linux/ctype.h>
 #include <linux/ftrace.h>
 #include <linux/slab.h>
+#include <linux/kasan.h>
 
 #include <asm/tlb.h>
 #include <asm/irq_regs.h>
@@ -5922,6 +5923,8 @@ void __cpuinit init_idle(struct task_struct *idle, int cpu)
 	__sched_fork(idle);
 	idle->state = TASK_RUNNING;
 	idle->se.exec_start = sched_clock();
+
+	kasan_unpoison_task_stack(idle);
 
 	do_set_cpus_allowed(idle, cpumask_of(cpu));
 	/*
