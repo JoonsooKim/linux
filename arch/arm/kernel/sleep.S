@@ -95,6 +95,10 @@ cpu_resume_after_mmu:
 	str	r5, [r2, r4, lsl #2]	@ restore old mapping
 	mcr	p15, 0, r0, c1, c0, 0	@ turn on D-cache
 	bl	cpu_init		@ restore the und/abt/irq banked regs
+#ifdef CONFIG_KASAN
+	mov	r0, sp
+	bl	kasan_unpoison_remaining_stack
+#endif
 	mov	r0, #0			@ return zero on success
 	ldmfd	sp!, {r4 - r11, pc}
 ENDPROC(cpu_resume_after_mmu)
