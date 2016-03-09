@@ -112,6 +112,10 @@ ENDPROC(cpu_resume_mmu)
 	.popsection
 cpu_resume_after_mmu:
 	bl	cpu_init		@ restore the und/abt/irq banked regs
+#ifdef CONFIG_KASAN
+	mov	r0, sp
+	bl	kasan_unpoison_remaining_stack
+#endif
 	mov	r0, #0			@ return zero on success
 	ldmfd	sp!, {r4 - r11, pc}
 ENDPROC(cpu_resume_after_mmu)
