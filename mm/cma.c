@@ -38,6 +38,7 @@
 #include <trace/events/cma.h>
 
 #include "cma.h"
+#include "internal.h"
 
 struct cma cma_areas[MAX_CMA_AREAS];
 unsigned cma_area_count;
@@ -116,10 +117,9 @@ static int __init cma_activate_area(struct cma *cma)
 		for (j = pageblock_nr_pages; j; --j, pfn++) {
 			WARN_ON_ONCE(!pfn_valid(pfn));
 			/*
-			 * alloc_contig_range requires the pfn range
-			 * specified to be in the same zone. Make this
-			 * simple by forcing the entire CMA resv range
-			 * to be in the same zone.
+			 * In init_cma_reserved_pageblock(), present_pages is
+			 * adjusted with assumption that all pages come from
+			 * a single zone. It could be fixed but not yet done.
 			 */
 			if (page_zone(pfn_to_page(pfn)) != zone)
 				goto err;
@@ -145,6 +145,34 @@ err:
 static int __init cma_init_reserved_areas(void)
 {
 	int i;
+	struct zone *zone;
+	pg_data_t *pgdat;
+
+	if (!cma_area_count)
+		return 0;
+
+	for_each_online_pgdat(pgdat) {
+		unsigned long start_pfn = UINT_MAX, end_pfn = 0;
+
+		for (i = 0; i < cma_area_count; i++) {
+			if (pfn_to_nid(cma_areas[i].base_pfn) !=
+				pgdat->node_id)
+				continue;
+
+			start_pfn = min(start_pfn, cma_areas[i].base_pfn);
+			end_pfn = max(end_pfn, cma_areas[i].base_pfn +
+						cma_areas[i].count);
+		}
+
+		if (!end_pfn)
+			continue;
+
+		zone = &pgdat->node_zones[ZONE_CMA];
+
+		/* ZONE_CMA doesn't need to exceed CMA region */
+		zone->zone_start_pfn = start_pfn;
+		zone->spanned_pages = end_pfn - start_pfn;
+	}
 
 	for (i = 0; i < cma_area_count; i++) {
 		int ret = cma_activate_area(&cma_areas[i]);
@@ -153,9 +181,33 @@ static int __init cma_init_reserved_areas(void)
 			return ret;
 	}
 
+	/*
+	 * Reserved pages for ZONE_CMA are now activated and this would change
+	 * ZONE_CMA's managed page counter and other zone's present counter.
+	 * We need to re-calculate various zone information that depends on
+	 * this initialization.
+	 */
+	build_all_zonelists(NULL, NULL);
+	for_each_populated_zone(zone) {
+		zone_pcp_update(zone);
+		set_zone_contiguous(zone);
+	}
+
+	/*
+	 * We need to re-init per zone wmark by calling
+	 * init_per_zone_wmark_min() but doesn't call here because it is
+	 * registered on core_initcall and it will be called later than us.
+	 */
+	for_each_populated_zone(zone) {
+		if (!is_zone_cma(zone))
+			continue;
+
+		setup_zone_pageset(zone);
+	}
+
 	return 0;
 }
-core_initcall(cma_init_reserved_areas);
+pure_initcall(cma_init_reserved_areas);
 
 /**
  * cma_init_reserved_mem() - create custom contiguous area from reserved memory
