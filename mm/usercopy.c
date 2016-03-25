@@ -182,7 +182,7 @@ static inline const char *check_page_span(const void *ptr, unsigned long n,
 	 * several independently allocated pages.
 	 */
 	is_reserved = PageReserved(page);
-	is_cma = is_migrate_cma_page(page);
+	is_cma = is_zone_cma(page_zone(page));
 	if (!is_reserved && !is_cma)
 		return "<spans multiple pages>";
 
@@ -190,7 +190,7 @@ static inline const char *check_page_span(const void *ptr, unsigned long n,
 		page = virt_to_head_page(ptr);
 		if (is_reserved && !PageReserved(page))
 			return "<spans Reserved and non-Reserved pages>";
-		if (is_cma && !is_migrate_cma_page(page))
+		if (is_cma && !is_zone_cma(page_zone(page)))
 			return "<spans CMA and non-CMA pages>";
 	}
 #endif
