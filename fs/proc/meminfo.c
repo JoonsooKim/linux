@@ -151,7 +151,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #ifdef CONFIG_CMA
 	show_val_kb(m, "CmaTotal:       ", totalcma_pages);
 	show_val_kb(m, "CmaFree:        ",
-		    global_page_state(NR_FREE_CMA_PAGES));
+		    cma_get_free());
 #endif
 
 	hugetlb_report_meminfo(m);
