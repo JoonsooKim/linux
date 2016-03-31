@@ -749,10 +749,10 @@ void __init mem_init(void)
 	 * CONFIG_DEBUG_PAGEALLOC. Otherwise order of initialization is not
 	 * important here.
 	 */
-	set_highmem_pages_init();
 
 	/* this will put all low memory onto the freelists */
 	free_all_bootmem();
+	set_highmem_pages_init();
 
 	after_bootmem = 1;
 
