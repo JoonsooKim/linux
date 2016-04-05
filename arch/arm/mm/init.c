@@ -274,6 +274,13 @@ void __init arm_memblock_init(const struct machine_desc *mdesc)
 
 	/* reserve memory for DMA contiguous allocations */
 	dma_contiguous_reserve(arm_dma_limit);
+#ifdef CONFIG_CMA
+	{
+		extern bool reserve_cma_test_areas(void);
+
+		reserve_cma_test_areas();
+	}
+#endif
 
 	arm_memblock_steal_permitted = false;
 	memblock_dump_all();
