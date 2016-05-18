@@ -1142,6 +1142,56 @@ int memcg_slab_show(struct seq_file *m, void *p)
 }
 #endif
 
+#ifdef CONFIG_SLAB_FREELIST_RANDOM
+/* Randomize a generic freelist */
+void freelist_randomize(struct rnd_state *state, freelist_idx_t *list,
+			size_t count)
+{
+	size_t i;
+	unsigned int rand;
+
+	for (i = 0; i < count; i++)
+		list[i] = i;
+
+	/* Fisher-Yates shuffle */
+	for (i = count - 1; i > 0; i--) {
+		rand = prandom_u32_state(state);
+		rand %= (i + 1);
+		swap(list[i], list[rand]);
+	}
+}
+
+/* Create a random sequence per cache */
+int cache_random_seq_create(struct kmem_cache *cachep, unsigned int count,
+				    gfp_t gfp)
+{
+	unsigned int seed;
+	struct rnd_state state;
+
+	if (count < 2)
+		return 0;
+
+	/* If it fails, we will just use the global lists */
+	cachep->random_seq = kcalloc(count, sizeof(freelist_idx_t), gfp);
+	if (!cachep->random_seq)
+		return -ENOMEM;
+
+	/* Get best entropy at this stage */
+	get_random_bytes_arch(&seed, sizeof(seed));
+	prandom_seed_state(&state, seed);
+
+	freelist_randomize(&state, cachep->random_seq, count);
+	return 0;
+}
+
+/* Destroy the per-cache random freelist sequence */
+void cache_random_seq_destroy(struct kmem_cache *cachep)
+{
+	kfree(cachep->random_seq);
+	cachep->random_seq = NULL;
+}
+#endif /* CONFIG_SLAB_FREELIST_RANDOM */
+
 /*
  * slabinfo_op - iterator that generates /proc/slabinfo
  *

@@ -3,6 +3,15 @@
 
 #include <linux/reciprocal_div.h>
 
+#define FREELIST_BYTE_INDEX (((PAGE_SIZE >> BITS_PER_BYTE) \
+				<= SLAB_OBJ_MIN_SIZE) ? 1 : 0)
+
+#if FREELIST_BYTE_INDEX
+typedef unsigned char freelist_idx_t;
+#else
+typedef unsigned short freelist_idx_t;
+#endif
+
 /*
  * Definitions unique to the original Linux SLAB allocator.
  */
@@ -81,7 +90,7 @@ struct kmem_cache {
 #endif
 
 #ifdef CONFIG_SLAB_FREELIST_RANDOM
-	void *random_seq;
+	freelist_idx_t *random_seq;
 #endif
 
 	struct kmem_cache_node *node[MAX_NUMNODES];
