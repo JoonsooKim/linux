@@ -56,6 +56,9 @@ struct kmem_cache_order_objects {
 	unsigned long x;
 };
 
+/* Index used for freelist randomization */
+typedef unsigned int freelist_idx_t;
+
 /*
  * Slab cache management.
  */
@@ -99,6 +102,11 @@ struct kmem_cache {
 	 */
 	int remote_node_defrag_ratio;
 #endif
+
+#ifdef CONFIG_SLAB_FREELIST_RANDOM
+	freelist_idx_t *random_seq;
+#endif
+
 	struct kmem_cache_node *node[MAX_NUMNODES];
 };
 
