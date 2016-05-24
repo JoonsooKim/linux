@@ -22,7 +22,6 @@
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/goldfish.h>
-#include <linux/mm.h>
 
 enum {
 	GOLDFISH_TTY_PUT_CHAR       = 0x00,
@@ -32,8 +31,6 @@ enum {
 	GOLDFISH_TTY_DATA_PTR       = 0x10,
 	GOLDFISH_TTY_DATA_LEN       = 0x14,
 	GOLDFISH_TTY_DATA_PTR_HIGH  = 0x18,
-
-	GOLDFISH_TTY_VERSION		= 0x20,
 
 	GOLDFISH_TTY_CMD_INT_DISABLE    = 0,
 	GOLDFISH_TTY_CMD_INT_ENABLE     = 1,
@@ -48,7 +45,6 @@ struct goldfish_tty {
 	u32 irq;
 	int opencount;
 	struct console console;
-	u32 version;
 };
 
 static DEFINE_MUTEX(goldfish_tty_lock);
@@ -57,75 +53,24 @@ static u32 goldfish_tty_line_count = 8;
 static u32 goldfish_tty_current_line_count;
 static struct goldfish_tty *goldfish_ttys;
 
-static inline void do_rw_io(struct goldfish_tty *qtty,
-							unsigned long address,
-							unsigned count, int is_write)
-{
-	unsigned long irq_flags;
-	void __iomem *base = qtty->base;
-
-	spin_lock_irqsave(&qtty->lock, irq_flags);
-	gf_write64((u64)address, base + GOLDFISH_TTY_DATA_PTR,
-				base + GOLDFISH_TTY_DATA_PTR_HIGH);
-	writel(count, base + GOLDFISH_TTY_DATA_LEN);
-
-	if (is_write)
-		writel(GOLDFISH_TTY_CMD_WRITE_BUFFER, base + GOLDFISH_TTY_CMD);
-	else
-		writel(GOLDFISH_TTY_CMD_READ_BUFFER, base + GOLDFISH_TTY_CMD);
-
-	spin_unlock_irqrestore(&qtty->lock, irq_flags);
-}
-
-static inline void goldfish_tty_rw(struct goldfish_tty *qtty,
-								   unsigned long address,
-								   unsigned count, int is_write)
-{
-	if (qtty->version) {
-		/* Goldfish TTY for Ranchu
-		 * platform uses physical addresses
-		 */
-		unsigned long address_end = address + count;
-		while (address < address_end) {
-			unsigned long page_end = (address & PAGE_MASK) + PAGE_SIZE;
-			unsigned long next     = page_end < address_end ? page_end
-									: address_end;
-			unsigned long avail    = next - address;
-			unsigned long paddr;
-			struct page *page;
-
-			/*
-			 * We go through a buffer on a page-by-page
-			 * basis in case of potentially huge buffer.
-			 */
-			page = virt_to_page((void *)address);
-			paddr = page_to_phys(page) | (address & ~PAGE_MASK);
-			do_rw_io(qtty, paddr, avail, is_write);
-			address += avail;
-		}
-	} else {
-		/* Old style Goldfish TTY used
-		 * on the Goldfish platform uses
-		 * virtual addresses
-		 */
-		do_rw_io(qtty, address, count, is_write);
-	}
-
-}
-
 static void goldfish_tty_do_write(int line, const char *buf, unsigned count)
 {
+	unsigned long irq_flags;
 	struct goldfish_tty *qtty = &goldfish_ttys[line];
-	unsigned long address = (unsigned long)(void *)buf;
-
-	goldfish_tty_rw(qtty, address, count, 1);
+	void __iomem *base = qtty->base;
+	spin_lock_irqsave(&qtty->lock, irq_flags);
+	gf_write64((u64)buf, base + GOLDFISH_TTY_DATA_PTR,
+				base + GOLDFISH_TTY_DATA_PTR_HIGH);
+	writel(count, base + GOLDFISH_TTY_DATA_LEN);
+	writel(GOLDFISH_TTY_CMD_WRITE_BUFFER, base + GOLDFISH_TTY_CMD);
+	spin_unlock_irqrestore(&qtty->lock, irq_flags);
 }
 
 static irqreturn_t goldfish_tty_interrupt(int irq, void *dev_id)
 {
 	struct goldfish_tty *qtty = dev_id;
 	void __iomem *base = qtty->base;
-	unsigned long address;
+	unsigned long irq_flags;
 	unsigned char *buf;
 	u32 count;
 
@@ -134,10 +79,12 @@ static irqreturn_t goldfish_tty_interrupt(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	count = tty_prepare_flip_string(&qtty->port, &buf, count);
-
-	address = (unsigned long)(void *)buf;
-	goldfish_tty_rw(qtty, address, count, 0);
-
+	spin_lock_irqsave(&qtty->lock, irq_flags);
+	gf_write64((u64)buf, base + GOLDFISH_TTY_DATA_PTR,
+				base + GOLDFISH_TTY_DATA_PTR_HIGH);
+	writel(count, base + GOLDFISH_TTY_DATA_LEN);
+	writel(GOLDFISH_TTY_CMD_READ_BUFFER, base + GOLDFISH_TTY_CMD);
+	spin_unlock_irqrestore(&qtty->lock, irq_flags);
 	tty_schedule_flip(&qtty->port);
 	return IRQ_HANDLED;
 }
@@ -325,14 +272,6 @@ static int goldfish_tty_probe(struct platform_device *pdev)
 	qtty->port.ops = &goldfish_port_ops;
 	qtty->base = base;
 	qtty->irq = irq;
-
-	/* Goldfish TTY device used by the Goldfish emulator
-	 * should identify itself with 0, forcing the driver
-	 * to use virtual addresses. Goldfish TTY device
-	 * on Ranchu emulator (qemu2) returns 1 here and
-	 * driver will use physical addresses.
-	 */
-	qtty->version = readl(base + GOLDFISH_TTY_VERSION);
 
 	writel(GOLDFISH_TTY_CMD_INT_DISABLE, base + GOLDFISH_TTY_CMD);
 
