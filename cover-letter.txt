@@ -1,5 +1,31 @@
 Hello,
 
+Changes from v2
+o Rebase on next-20160525
+o No other changes except following description
+
+There was a discussion with Mel [1] after LSF/MM 2016. I could summarise
+it to help merge decision but it's better to read by yourself since
+if I summarise it, it would be biased for me. But, if anyone hope
+the summary, I will do it. :)
+
+Anyway, Mel's position on this patchset seems to be neutral. He saids:
+"I'm not going to outright NAK your series but I won't ACK it either"
+
+We can fix the problems with any approach but I hope to go a new zone
+approach because it is less error-prone. It reduces some corner case
+handling for now and remove need for potential corner case handling to fix
+problems.
+
+Note that our company is already using ZONE_CMA and there is no problem.
+
+If anyone has a different opinion, please let me know and let's discuss
+together.
+
+Andrew, if there is something to do for merge, please let me know.
+
+[1] https://lkml.kernel.org/r/20160425053653.GA25662@js1304-P5Q-DELUXE
+
 Changes from v1
 o Separate some patches which deserve to submit independently
 o Modify description to reflect current kernel state
