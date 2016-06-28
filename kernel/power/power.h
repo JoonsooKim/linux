@@ -203,12 +203,7 @@ static inline void suspend_test_finish(const char *label) {}
 extern int pm_notifier_call_chain(unsigned long val);
 #endif
 
-#ifdef CONFIG_HIGHMEM
-int restore_highmem(void);
-#else
-static inline unsigned int count_highmem_pages(void) { return 0; }
-static inline int restore_highmem(void) { return 0; }
-#endif
+extern int restore_highmem(void);
 
 /*
  * Suspend test levels

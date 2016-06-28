@@ -1053,7 +1053,6 @@ unsigned int snapshot_additional_pages(struct zone *zone)
 	return 2 * rtree;
 }
 
-#ifdef CONFIG_HIGHMEM
 /**
  *	count_free_highmem_pages - compute the total number of free highmem
  *	pages, system-wide.
@@ -1123,12 +1122,6 @@ static unsigned int count_highmem_pages(void)
 	}
 	return n;
 }
-#else
-static inline void *saveable_highmem_page(struct zone *z, unsigned long p)
-{
-	return NULL;
-}
-#endif /* CONFIG_HIGHMEM */
 
 /**
  *	saveable_page - Determine whether a non-highmem page should be included
@@ -1216,7 +1209,6 @@ static void safe_copy_page(void *dst, struct page *s_page)
 }
 
 
-#ifdef CONFIG_HIGHMEM
 static inline struct page *
 page_is_saveable(struct zone *zone, unsigned long pfn)
 {
@@ -1251,15 +1243,6 @@ static void copy_data_page(unsigned long dst_pfn, unsigned long src_pfn)
 		}
 	}
 }
-#else
-#define page_is_saveable(zone, pfn)	saveable_page(zone, pfn)
-
-static inline void copy_data_page(unsigned long dst_pfn, unsigned long src_pfn)
-{
-	safe_copy_page(page_address(pfn_to_page(dst_pfn)),
-				pfn_to_page(src_pfn));
-}
-#endif /* CONFIG_HIGHMEM */
 
 static void
 copy_data_pages(struct memory_bitmap *copy_bm, struct memory_bitmap *orig_bm)
@@ -1408,7 +1391,6 @@ static unsigned long preallocate_image_memory(unsigned long nr_pages,
 	return preallocate_image_pages(alloc, GFP_IMAGE);
 }
 
-#ifdef CONFIG_HIGHMEM
 static unsigned long preallocate_image_highmem(unsigned long nr_pages)
 {
 	return preallocate_image_pages(nr_pages, GFP_IMAGE | __GFP_HIGHMEM);
@@ -1432,19 +1414,6 @@ static unsigned long preallocate_highmem_fraction(unsigned long nr_pages,
 
 	return preallocate_image_pages(alloc, GFP_IMAGE | __GFP_HIGHMEM);
 }
-#else /* CONFIG_HIGHMEM */
-static inline unsigned long preallocate_image_highmem(unsigned long nr_pages)
-{
-	return 0;
-}
-
-static inline unsigned long preallocate_highmem_fraction(unsigned long nr_pages,
-						unsigned long highmem,
-						unsigned long total)
-{
-	return 0;
-}
-#endif /* CONFIG_HIGHMEM */
 
 /**
  * free_unnecessary_pages - Release preallocated pages not needed for the image
@@ -1702,7 +1671,6 @@ int hibernate_preallocate_memory(void)
 	return -ENOMEM;
 }
 
-#ifdef CONFIG_HIGHMEM
 /**
   *	count_pages_for_highmem - compute the number of non-highmem pages
   *	that will be necessary for creating copies of highmem pages.
@@ -1719,10 +1687,6 @@ static unsigned int count_pages_for_highmem(unsigned int nr_highmem)
 
 	return nr_highmem;
 }
-#else
-static unsigned int
-count_pages_for_highmem(unsigned int nr_highmem) { return 0; }
-#endif /* CONFIG_HIGHMEM */
 
 /**
  *	enough_free_mem - Make sure we have enough free memory for the
@@ -1745,7 +1709,6 @@ static int enough_free_mem(unsigned int nr_pages, unsigned int nr_highmem)
 	return free > nr_pages + PAGES_FOR_IO;
 }
 
-#ifdef CONFIG_HIGHMEM
 /**
  *	get_highmem_buffer - if there are some highmem pages in the suspend
  *	image, we may need the buffer to copy them and/or load their data.
@@ -1780,12 +1743,6 @@ alloc_highmem_pages(struct memory_bitmap *bm, unsigned int nr_highmem)
 	}
 	return nr_highmem;
 }
-#else
-static inline int get_highmem_buffer(int safe_needed) { return 0; }
-
-static inline unsigned int
-alloc_highmem_pages(struct memory_bitmap *bm, unsigned int n) { return 0; }
-#endif /* CONFIG_HIGHMEM */
 
 /**
  *	swsusp_alloc - allocate memory for the suspend image
@@ -2105,7 +2062,6 @@ static int unpack_orig_pfns(unsigned long *buf, struct memory_bitmap *bm)
  */
 static struct linked_page *safe_pages_list;
 
-#ifdef CONFIG_HIGHMEM
 /* struct highmem_pbe is used for creating the list of highmem pages that
  * should be restored atomically during the resume from disk, because the page
  * frames they have occupied before the suspend are in use.
@@ -2289,26 +2245,6 @@ static inline void free_highmem_data(void)
 	if (buffer)
 		free_image_page(buffer, PG_UNSAFE_CLEAR);
 }
-#else
-static unsigned int
-count_highmem_image_pages(struct memory_bitmap *bm) { return 0; }
-
-static inline int
-prepare_highmem_image(struct memory_bitmap *bm, unsigned int *nr_highmem_p)
-{
-	return 0;
-}
-
-static inline void *
-get_highmem_page_buffer(struct page *page, struct chain_allocator *ca)
-{
-	return ERR_PTR(-EINVAL);
-}
-
-static inline void copy_last_highmem_page(void) {}
-static inline int last_highmem_page_copied(void) { return 1; }
-static inline void free_highmem_data(void) {}
-#endif /* CONFIG_HIGHMEM */
 
 /**
  *	prepare_image - use the memory bitmap @bm to mark the pages that will
@@ -2555,7 +2491,6 @@ int snapshot_image_loaded(struct snapshot_handle *handle)
 			handle->cur <= nr_meta_pages + nr_copy_pages);
 }
 
-#ifdef CONFIG_HIGHMEM
 /* Assumes that @buf is ready and points to a "safe" page */
 static inline void
 swap_two_pages_data(struct page *p1, struct page *p2, void *buf)
@@ -2600,4 +2535,3 @@ int restore_highmem(void)
 	free_image_page(buf, PG_UNSAFE_CLEAR);
 	return 0;
 }
-#endif /* CONFIG_HIGHMEM */
