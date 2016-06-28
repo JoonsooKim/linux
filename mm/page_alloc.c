@@ -1169,7 +1169,7 @@ static void __meminit __init_single_page(struct page *page, unsigned long pfn,
 	INIT_LIST_HEAD(&page->lru);
 #ifdef WANT_PAGE_VIRTUAL
 	/* The shift won't overflow because ZONE_NORMAL is below 4G. */
-	if (!is_highmem_idx(zone))
+	if (!PageHighMem(page))
 		set_page_address(page, __va(pfn << PAGE_SHIFT));
 #endif
 }
