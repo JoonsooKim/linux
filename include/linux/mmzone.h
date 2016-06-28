@@ -799,25 +799,13 @@ static inline int populated_zone(struct zone *zone)
 
 extern int movable_zone;
 
-#ifdef CONFIG_HIGHMEM
-static inline int zone_movable_is_highmem(void)
-{
-#ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
-	return movable_zone == ZONE_HIGHMEM;
-#else
-	return (ZONE_MOVABLE - 1) == ZONE_HIGHMEM;
-#endif
-}
-#endif
-
 static inline int is_highmem_idx(enum zone_type idx)
 {
 #ifdef CONFIG_HIGHMEM
-	return (idx == ZONE_HIGHMEM ||
-		(idx == ZONE_MOVABLE && zone_movable_is_highmem()));
-#else
-	return 0;
+	if (idx == ZONE_HIGHMEM)
+		return true;
 #endif
+	return idx == ZONE_MOVABLE;
 }
 
 /**
@@ -828,11 +816,7 @@ static inline int is_highmem_idx(enum zone_type idx)
  */
 static inline int is_highmem(struct zone *zone)
 {
-#ifdef CONFIG_HIGHMEM
 	return is_highmem_idx(zone_idx(zone));
-#else
-	return 0;
-#endif
 }
 
 /* These two functions are used to setup the per zone pages min values */
