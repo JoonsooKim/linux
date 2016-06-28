@@ -31,6 +31,7 @@ EXPORT_SYMBOL(contig_page_data);
 #endif
 
 unsigned long max_low_pfn;
+EXPORT_SYMBOL(max_low_pfn);
 unsigned long min_low_pfn;
 unsigned long max_pfn;
 unsigned long long max_possible_pfn;
