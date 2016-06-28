@@ -293,7 +293,6 @@ static unsigned long zone_dirtyable_memory(struct zone *zone)
 
 static unsigned long highmem_dirtyable_memory(unsigned long total)
 {
-#ifdef CONFIG_HIGHMEM
 	int node;
 	unsigned long x = 0;
 	int i;
@@ -325,9 +324,6 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 	 * that this does not occur.
 	 */
 	return min(x, total);
-#else
-	return 0;
-#endif
 }
 
 /**
