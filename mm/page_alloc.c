@@ -5921,7 +5921,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat)
 		 * and per-cpu initialisations
 		 */
 		memmap_pages = calc_memmap_size(size, realsize);
-		if (!is_highmem_idx(j)) {
+		if (!is_highmem(zone)) {
 			if (freesize >= memmap_pages) {
 				freesize -= memmap_pages;
 				if (memmap_pages)
@@ -5940,7 +5940,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat)
 					zone_names[0], dma_reserve);
 		}
 
-		if (!is_highmem_idx(j))
+		if (!is_highmem(zone))
 			nr_kernel_pages += freesize;
 		/* Charge for highmem memmap if there are enough kernel pages */
 		else if (nr_kernel_pages > memmap_pages * 2)
@@ -5952,7 +5952,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat)
 		 * when the bootmem allocator frees pages into the buddy system.
 		 * And all highmem pages will be managed by the buddy system.
 		 */
-		zone->managed_pages = is_highmem_idx(j) ? realsize : freesize;
+		zone->managed_pages = is_highmem(zone) ? realsize : freesize;
 #ifdef CONFIG_NUMA
 		zone->node = nid;
 		zone->min_unmapped_pages = (freesize*sysctl_min_unmapped_ratio)
