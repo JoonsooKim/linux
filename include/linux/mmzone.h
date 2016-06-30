@@ -800,20 +800,19 @@ static inline int populated_zone(struct zone *zone)
 extern int movable_zone;
 
 /**
- * is_highmem - helper function to quickly check if a struct zone is a 
- *              highmem zone or not.  This is an attempt to keep references
- *              to ZONE_{DMA/NORMAL/HIGHMEM/etc} in general code to a minimum.
+ * is_normal_memory - helper function to quickly check if the zone is usable
+ *		for normal allocation or not.
  * @zone - pointer to struct zone variable
  */
-static inline int is_highmem(struct zone *zone)
+static inline int is_normal_memory(struct zone *zone)
 {
 	enum zone_type idx = zone_idx(zone);
 
 #ifdef CONFIG_HIGHMEM
 	if (idx == ZONE_HIGHMEM)
-		return true;
+		return false;
 #endif
-	return idx == ZONE_MOVABLE;
+	return idx != ZONE_MOVABLE;
 }
 
 /* These two functions are used to setup the per zone pages min values */

@@ -1064,7 +1064,7 @@ static unsigned int count_free_highmem_pages(void)
 	unsigned int cnt = 0;
 
 	for_each_populated_zone(zone)
-		if (is_highmem(zone))
+		if (!is_normal_memory(zone))
 			cnt += zone_page_state(zone, NR_FREE_PAGES);
 
 	return cnt;
@@ -1111,7 +1111,7 @@ static unsigned int count_highmem_pages(void)
 	for_each_populated_zone(zone) {
 		unsigned long pfn, max_zone_pfn;
 
-		if (!is_highmem(zone))
+		if (is_normal_memory(zone))
 			continue;
 
 		mark_free_pages(zone);
@@ -1167,7 +1167,7 @@ static unsigned int count_data_pages(void)
 	unsigned int n = 0;
 
 	for_each_populated_zone(zone) {
-		if (is_highmem(zone))
+		if (!is_normal_memory(zone))
 			continue;
 
 		mark_free_pages(zone);
@@ -1212,7 +1212,7 @@ static void safe_copy_page(void *dst, struct page *s_page)
 static inline struct page *
 page_is_saveable(struct zone *zone, unsigned long pfn)
 {
-	return is_highmem(zone) ?
+	return !is_normal_memory(zone) ?
 		saveable_highmem_page(zone, pfn) : saveable_page(zone, pfn);
 }
 
@@ -1365,7 +1365,7 @@ static unsigned long preallocate_image_pages(unsigned long nr_pages, gfp_t mask)
 		if (!page)
 			break;
 		memory_bm_set_bit(&copy_bm, page_to_pfn(page));
-		if (is_highmem(page_zone(page)))
+		if (!is_normal_memory(page_zone(page)))
 			alloc_highmem++;
 		else
 			alloc_normal++;
@@ -1449,7 +1449,7 @@ static unsigned long free_unnecessary_pages(void)
 		unsigned long pfn = memory_bm_next_pfn(&copy_bm);
 		struct page *page = pfn_to_page(pfn);
 
-		if (is_highmem(page_zone(page))) {
+		if (!is_normal_memory(page_zone(page))) {
 			if (!to_free_highmem)
 				continue;
 			to_free_highmem--;
@@ -1557,7 +1557,7 @@ int hibernate_preallocate_memory(void)
 	size = 0;
 	for_each_populated_zone(zone) {
 		size += snapshot_additional_pages(zone);
-		if (is_highmem(zone))
+		if (!is_normal_memory(zone))
 			highmem += zone_page_state(zone, NR_FREE_PAGES);
 		else
 			count += zone_page_state(zone, NR_FREE_PAGES);
@@ -1699,7 +1699,7 @@ static int enough_free_mem(unsigned int nr_pages, unsigned int nr_highmem)
 	unsigned int free = alloc_normal;
 
 	for_each_populated_zone(zone)
-		if (!is_highmem(zone))
+		if (is_normal_memory(zone))
 			free += zone_page_state(zone, NR_FREE_PAGES);
 
 	nr_pages += count_pages_for_highmem(nr_highmem);
@@ -2093,7 +2093,7 @@ static unsigned int count_highmem_image_pages(struct memory_bitmap *bm)
 	memory_bm_position_reset(bm);
 	pfn = memory_bm_next_pfn(bm);
 	while (pfn != BM_END_OF_MAP) {
-		if (is_highmem(page_zone(pfn_to_page(pfn))))
+		if (!is_normal_memory(page_zone(pfn_to_page(pfn))))
 			cnt++;
 
 		pfn = memory_bm_next_pfn(bm);
@@ -2356,7 +2356,7 @@ static void *get_buffer(struct memory_bitmap *bm, struct chain_allocator *ca)
 		return ERR_PTR(-EFAULT);
 
 	page = pfn_to_page(pfn);
-	if (is_highmem(page_zone(page)))
+	if (!is_normal_memory(page_zone(page)))
 		return get_highmem_page_buffer(page, ca);
 
 	if (swsusp_page_is_forbidden(page) && swsusp_page_is_free(page))

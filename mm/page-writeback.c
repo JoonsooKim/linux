@@ -301,7 +301,7 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 		for (i = 0; i < MAX_NR_ZONES; i++) {
 			struct zone *z = &NODE_DATA(node)->node_zones[i];
 
-			if (is_highmem(z))
+			if (!is_normal_memory(z))
 				x += zone_dirtyable_memory(z);
 		}
 	}

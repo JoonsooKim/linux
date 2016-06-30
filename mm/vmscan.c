@@ -3080,7 +3080,7 @@ static bool kswapd_shrink_zone(struct zone *zone,
 	 * If there is no low memory pressure or the zone is balanced then no
 	 * reclaim is necessary
 	 */
-	lowmem_pressure = (buffer_heads_over_limit && is_highmem(zone));
+	lowmem_pressure = (buffer_heads_over_limit && !is_normal_memory(zone));
 	if (!lowmem_pressure && zone_balanced(zone, sc->order, false,
 						balance_gap, classzone_idx))
 		return true;
@@ -3172,7 +3172,7 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
 			 * has a highmem zone, force kswapd to reclaim from
 			 * it to relieve lowmem pressure.
 			 */
-			if (buffer_heads_over_limit && is_highmem(zone)) {
+			if (buffer_heads_over_limit && !is_normal_memory(zone)) {
 				end_zone = i;
 				break;
 			}

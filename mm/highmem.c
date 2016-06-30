@@ -116,7 +116,7 @@ unsigned int nr_free_highpages (void)
 	unsigned int pages = 0;
 
 	for_each_populated_zone(zone) {
-		if (is_highmem(zone))
+		if (!is_normal_memory(zone))
 			pages += zone_page_state(zone, NR_FREE_PAGES);
 	}
 

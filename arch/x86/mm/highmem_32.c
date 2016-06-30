@@ -117,7 +117,7 @@ void __init set_highmem_pages_init(void)
 	for_each_zone(zone) {
 		unsigned long zone_start_pfn, zone_end_pfn;
 
-		if (!is_highmem(zone))
+		if (zone_idx(zone) != ZONE_HIGHMEM)
 			continue;
 
 		zone_start_pfn = zone->zone_start_pfn;
