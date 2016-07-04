@@ -287,6 +287,11 @@ static int slab_test_init(void)
 	cycles_t time1, time2, time_alloc, time_free;
 	int rem;
 	int size;
+	struct kmem_cache *s;
+
+	s = kmem_cache_create("kasan_debbuger_test", 128, 0, SLAB_NOLEAKTRACE, NULL);
+	kmem_cache_free(s, kmem_cache_alloc(s, GFP_KERNEL));
+	kmem_cache_destroy(s);
 
 	if (!run)
 		printk(KERN_ALERT "test skipped\n");
