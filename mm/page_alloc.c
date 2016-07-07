@@ -7307,7 +7307,7 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 				break;
 			}
 			tries = 0;
-		} else if (++tries == 5) {
+		} else if (++tries == 5 || !sync) {
 			ret = ret < 0 ? ret : -EBUSY;
 			break;
 		}
@@ -7421,6 +7421,47 @@ static int alloc_contig_common(unsigned long start, unsigned long end,
 		free_contig_range(end, outer_end - end);
 
 	return 0;
+}
+
+/*
+ * Should be called against MIGRATE_CMA pageblock
+ */
+int alloc_contig_range_fast(unsigned long start, unsigned long end)
+{
+	struct page *page;
+	unsigned long pfn;
+
+	/* Quick check for possiblity of success */
+	for (pfn = start; pfn < end; pfn++) {
+		/*
+		 * We don't need to worry about pfn validity and zone.
+		 * It is guaranteed in initialization phase of cma.
+		 */
+		page = pfn_to_page(pfn);
+		if (PageBuddy(page)) {
+			unsigned long freepage_order = page_order_unsafe(page);
+
+			if (freepage_order > 0 && freepage_order < MAX_ORDER)
+				pfn += (1UL << freepage_order) - 1;
+			continue;
+		}
+
+		if (PageLRU(page)) {
+			if (page_is_file_cache(page)) {
+				if (PageWriteback(page) || PageDirty(page))
+					return -EBUSY;
+			}
+
+			continue;
+		}
+
+		if (__PageMovable(page))
+			continue;
+
+		return -EBUSY;
+	}
+
+	return alloc_contig_common(start, end, false);
 }
 
 /**

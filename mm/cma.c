@@ -370,6 +370,7 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 	unsigned long bitmap_maxno, bitmap_no, bitmap_count;
 	struct page *page = NULL;
 	int ret;
+	bool sync = count <= (1UL << PAGE_ALLOC_COSTLY_ORDER) ? false : true;
 
 	if (!cma || !cma->count)
 		return NULL;
@@ -392,6 +393,13 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 				offset);
 		if (bitmap_no >= bitmap_maxno) {
 			mutex_unlock(&cma->lock);
+
+			if (!sync) {
+				start = 0;
+				sync = true;
+				continue;
+			}
+
 			break;
 		}
 		bitmap_set(cma->bitmap, bitmap_no, bitmap_count);
@@ -404,7 +412,11 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 
 		pfn = cma->base_pfn + (bitmap_no << cma->order_per_bit);
 		mutex_lock(&cma_mutex);
-		ret = alloc_contig_range(pfn, pfn + count, MIGRATE_CMA);
+		if (sync)
+			ret = alloc_contig_range(pfn, pfn + count,
+						MIGRATE_CMA);
+		else
+			ret = alloc_contig_range_fast(pfn, pfn + count);
 		mutex_unlock(&cma_mutex);
 		if (ret == 0) {
 			page = pfn_to_page(pfn);
@@ -415,8 +427,10 @@ struct page *cma_alloc(struct cma *cma, size_t count, unsigned int align)
 		if (ret != -EBUSY)
 			break;
 
-		pr_debug("%s(): memory range at %p is busy, retrying\n",
-			 __func__, pfn_to_page(pfn));
+		if (sync) {
+			pr_debug("%s(): memory range at %p is busy, retrying\n",
+				 __func__, pfn_to_page(pfn));
+		}
 		/* try again with a bit different memory target */
 		start = bitmap_no + mask + 1;
 	}
