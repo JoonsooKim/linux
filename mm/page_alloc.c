@@ -7282,7 +7282,7 @@ static unsigned long pfn_max_align_up(unsigned long pfn)
 
 /* [start, end) must belong to a single zone. */
 static int __alloc_contig_migrate_range(struct compact_control *cc,
-					unsigned long start, unsigned long end)
+			unsigned long start, unsigned long end, bool sync)
 {
 	/* This function is based on compact_zone() from compaction.c. */
 	unsigned long nr_reclaimed;
@@ -7290,7 +7290,8 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 	unsigned int tries = 0;
 	int ret = 0;
 
-	migrate_prep();
+	if (sync)
+		migrate_prep();
 
 	while (pfn < end || !list_empty(&cc->migratepages)) {
 		if (fatal_signal_pending(current)) {
@@ -7325,28 +7326,8 @@ static int __alloc_contig_migrate_range(struct compact_control *cc,
 	return 0;
 }
 
-/**
- * alloc_contig_range() -- tries to allocate given range of pages
- * @start:	start PFN to allocate
- * @end:	one-past-the-last PFN to allocate
- * @migratetype:	migratetype of the underlaying pageblocks (either
- *			#MIGRATE_MOVABLE or #MIGRATE_CMA).  All pageblocks
- *			in range must have the same migratetype and it must
- *			be either of the two.
- *
- * The PFN range does not have to be pageblock or MAX_ORDER_NR_PAGES
- * aligned, however it's the caller's responsibility to guarantee that
- * we are the only thread that changes migrate type of pageblocks the
- * pages fall in.
- *
- * The PFN range must belong to a single zone.
- *
- * Returns zero on success or negative error code.  On success all
- * pages which PFN is in [start, end) are allocated for the caller and
- * need to be freed with free_contig_range().
- */
-int alloc_contig_range(unsigned long start, unsigned long end,
-		       unsigned migratetype)
+static int alloc_contig_common(unsigned long start, unsigned long end,
+				bool sync)
 {
 	unsigned long outer_start, outer_end;
 	unsigned int order;
@@ -7356,48 +7337,23 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 		.nr_migratepages = 0,
 		.order = -1,
 		.zone = page_zone(pfn_to_page(start)),
-		.mode = MIGRATE_SYNC,
+		.mode = sync ? MIGRATE_SYNC : MIGRATE_SYNC_LIGHT,
 		.ignore_skip_hint = true,
 	};
 	INIT_LIST_HEAD(&cc.migratepages);
 
 	/*
-	 * What we do here is we mark all pageblocks in range as
-	 * MIGRATE_ISOLATE.  Because pageblock and max order pages may
-	 * have different sizes, and due to the way page allocator
-	 * work, we align the range to biggest of the two pages so
-	 * that page allocator won't try to merge buddies from
-	 * different pageblocks and change MIGRATE_ISOLATE to some
-	 * other migration type.
-	 *
-	 * Once the pageblocks are marked as MIGRATE_ISOLATE, we
-	 * migrate the pages from an unaligned range (ie. pages that
-	 * we are interested in).  This will put all the pages in
-	 * range back to page allocator as MIGRATE_ISOLATE.
-	 *
-	 * When this is done, we take the pages in range from page
-	 * allocator removing them from the buddy system.  This way
-	 * page allocator will never consider using them.
-	 *
-	 * This lets us mark the pageblocks back as
-	 * MIGRATE_CMA/MIGRATE_MOVABLE so that free pages in the
-	 * aligned range but not in the unaligned, original range are
-	 * put back to page allocator so that buddy can use them.
-	 */
-
-	ret = start_isolate_page_range(pfn_max_align_down(start),
-				       pfn_max_align_up(end), migratetype,
-				       false);
-	if (ret)
-		return ret;
-
-	/*
 	 * In case of -EBUSY, we'd like to know which page causes problem.
 	 * So, just fall through. We will check it in test_pages_isolated().
 	 */
-	ret = __alloc_contig_migrate_range(&cc, start, end);
-	if (ret && ret != -EBUSY)
-		goto done;
+	ret = __alloc_contig_migrate_range(&cc, start, end, sync);
+	if (ret) {
+		if (!sync)
+			return ret;
+
+		if (ret != -EBUSY)
+			return ret;
+	}
 
 	/*
 	 * Pages from [start, end) are within a MAX_ORDER_NR_PAGES
@@ -7416,8 +7372,12 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	 * isolated thus they won't get removed from buddy.
 	 */
 
-	lru_add_drain_all();
-	drain_all_pages(cc.zone);
+	if (sync) {
+		lru_add_drain_all();
+		drain_all_pages(cc.zone);
+	} else {
+		drain_local_pages(cc.zone);
+	}
 
 	order = 0;
 	outer_start = start;
@@ -7443,19 +7403,16 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	}
 
 	/* Make sure the range is really isolated. */
-	if (test_pages_isolated(outer_start, end, false)) {
+	if (sync && test_pages_isolated(outer_start, end, false)) {
 		pr_info("%s: [%lx, %lx) PFNs busy\n",
 			__func__, outer_start, end);
-		ret = -EBUSY;
-		goto done;
+		return -EBUSY;
 	}
 
 	/* Grab isolated pages from freelists. */
 	outer_end = isolate_freepages_range(&cc, outer_start, end);
-	if (!outer_end) {
-		ret = -EBUSY;
-		goto done;
-	}
+	if (!outer_end)
+		return -EBUSY;
 
 	/* Free head and tail (if any) */
 	if (start != outer_start)
@@ -7463,9 +7420,70 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 	if (end != outer_end)
 		free_contig_range(end, outer_end - end);
 
-done:
-	undo_isolate_page_range(pfn_max_align_down(start),
-				pfn_max_align_up(end), migratetype);
+	return 0;
+}
+
+/**
+ * alloc_contig_range() -- tries to allocate given range of pages
+ * @start:	start PFN to allocate
+ * @end:	one-past-the-last PFN to allocate
+ * @migratetype:	migratetype of the underlaying pageblocks (either
+ *			#MIGRATE_MOVABLE or #MIGRATE_CMA).  All pageblocks
+ *			in range must have the same migratetype and it must
+ *			be either of the two.
+ *
+ * The PFN range does not have to be pageblock or MAX_ORDER_NR_PAGES
+ * aligned, however it's the caller's responsibility to guarantee that
+ * we are the only thread that changes migrate type of pageblocks the
+ * pages fall in.
+ *
+ * The PFN range must belong to a single zone.
+ *
+ * Returns zero on success or negative error code.  On success all
+ * pages which PFN is in [start, end) are allocated for the caller and
+ * need to be freed with free_contig_range().
+ */
+int alloc_contig_range(unsigned long start, unsigned long end,
+		       unsigned migratetype)
+{
+	int ret;
+	unsigned long aligned_start, aligned_end;
+
+	/*
+	 * What we do here is we mark all pageblocks in range as
+	 * MIGRATE_ISOLATE.  Because pageblock and max order pages may
+	 * have different sizes, and due to the way page allocator
+	 * work, we align the range to biggest of the two pages so
+	 * that page allocator won't try to merge buddies from
+	 * different pageblocks and change MIGRATE_ISOLATE to some
+	 * other migration type.
+	 *
+	 * Once the pageblocks are marked as MIGRATE_ISOLATE, we
+	 * migrate the pages from an unaligned range (ie. pages that
+	 * we are interested in).  This will put all the pages in
+	 * range back to page allocator as MIGRATE_ISOLATE.
+	 *
+	 * When this is done, we take the pages in range from page
+	 * allocator removing them from the buddy system.  This way
+	 * page allocator will never consider using them.
+	 *
+	 * This lets us mark the pageblocks back as
+	 * MIGRATE_CMA/MIGRATE_MOVABLE so that free pages in the
+	 * aligned range but not in the unaligned, original range are
+	 * put back to page allocator so that buddy can use them.
+	 */
+
+	aligned_start = pfn_max_align_down(start);
+	aligned_end = pfn_max_align_up(end);
+	ret = start_isolate_page_range(aligned_start, aligned_end,
+					migratetype, false);
+	if (ret)
+		return ret;
+
+	ret = alloc_contig_common(start, end, true);
+
+	undo_isolate_page_range(aligned_start, aligned_end, migratetype);
+
 	return ret;
 }
 
