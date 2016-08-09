@@ -1,10 +1,68 @@
 Hello,
 
+Changes from v3
+o Rebase on next-20160805
+o Split first patch per Vlastimil
+o Remove useless function parameter per Vlastimil
+o Add code comment per Vlastimil
+o Add following description on cover-letter
+
+This is the 4th version of ZONE_CMA patchset. Most of changes are
+due to rebase and there is no major change.
+
+CMA has many problems and I mentioned them on the bottom of the
+cover letter. These problems comes from limitation of CMA memory that
+should be always migratable for device usage. I think that introducing
+a new zone is the best approach to solve them. Here are the reasons.
+
+Zone is introduced to solve some issues due to H/W addressing limitation.
+MM subsystem is implemented to work efficiently with these zones.
+Allocation/reclaim logic in MM consider this limitation very much.
+What I did in this patchset is introducing a new zone and extending zone's
+concept slightly. New concept is that zone can have not only H/W addressing
+limitation but also S/W limitation to guarantee page migration.
+This concept is originated from ZONE_MOVABLE and it works well
+for a long time. So, ZONE_CMA should not be special at this moment.
+
+There is a major concern from Mel that ZONE_MOVABLE which has
+S/W limitation causes highmem/lowmem problem. Highmem/lowmem problem is
+that some of memory cannot be usable for kernel memory due to limitation
+of the zone. It causes to break LRU ordering and makes hard to find kernel
+usable memory when memory pressure.
+
+However, important point is that this problem doesn't come from
+implementation detail (ZONE_MOVABLE/MIGRATETYPE). Even if we implement it
+by MIGRATETYPE instead of by ZONE_MOVABLE, we cannot use that type of
+memory for kernel allocation because it isn't migratable. So, it will cause
+to break LRU ordering, too. We cannot avoid the problem in any case.
+Therefore, we should focus on which solution is better for maintainance
+and not intrusive for MM subsystem.
+
+In this viewpoint, I think that zone approach is better. As mentioned
+earlier, MM subsystem already have many infrastructures to deal with
+zone's H/W addressing limitation. Adding S/W limitation on zone concept
+and adding a new zone doesn't change anything. It will work by itself.
+My patchset can remove many hooks related to CMA area management in MM
+while solving the problems. More hooks are required to solve the problems
+if we choose MIGRATETYPE approach.
+
+Although Mel withdrew the review, Vlastimil expressed an agreement on this
+new zone approach [6].
+
+ "I realize I differ here from much more experienced mm guys, and will
+ probably deservingly regret it later on, but I think that the ZONE_CMA
+ approach could work indeed better than current MIGRATE_CMA pageblocks."
+
+If anyone has a different opinion, please let me know.
+
+Thanks.
+
+
 Changes from v2
 o Rebase on next-20160525
 o No other changes except following description
 
-There was a discussion with Mel [1] after LSF/MM 2016. I could summarise
+There was a discussion with Mel [5] after LSF/MM 2016. I could summarise
 it to help merge decision but it's better to read by yourself since
 if I summarise it, it would be biased for me. But, if anyone hope
 the summary, I will do it. :)
@@ -23,8 +81,6 @@ If anyone has a different opinion, please let me know and let's discuss
 together.
 
 Andrew, if there is something to do for merge, please let me know.
-
-[1] https://lkml.kernel.org/r/20160425053653.GA25662@js1304-P5Q-DELUXE
 
 Changes from v1
 o Separate some patches which deserve to submit independently
@@ -151,3 +207,5 @@ Thanks.
 [2] https://lkml.org/lkml/2014/11/4/55
 [3] https://lkml.org/lkml/2014/10/15/623
 [4] http://www.spinics.net/lists/linux-mm/msg100562.html
+[5] https://lkml.kernel.org/r/20160425053653.GA25662@js1304-P5Q-DELUXE
+[6] https://lkml.kernel.org/r/1919a85d-6e1e-374f-b8c3-1236c36b0393@suse.cz
