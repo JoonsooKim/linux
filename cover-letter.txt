@@ -1,5 +1,13 @@
 Hello,
 
+Changes from v4
+o Rebase on next-20160825
+o Add general fix patch for lowmem reserve
+o Fix lowmem reserve ratio
+o Fix zone span optimizaion per Vlastimil
+o Fix pageset initialization
+o Change invocation timing on cma_init_reserved_areas()
+
 Changes from v3
 o Rebase on next-20160805
 o Split first patch per Vlastimil
