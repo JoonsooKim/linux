@@ -120,6 +120,14 @@ void __init set_highmem_pages_init(void)
 		if (!is_highmem(zone))
 			continue;
 
+		/*
+		 * ZONE_CMA is a special zone that should not be
+		 * participated in initialization because it's pages
+		 * would be initialized by initialization of other zones.
+		 */
+		if (is_zone_cma(zone))
+			continue;
+
 		zone_start_pfn = zone->zone_start_pfn;
 		zone_end_pfn = zone_start_pfn + zone->spanned_pages;
 

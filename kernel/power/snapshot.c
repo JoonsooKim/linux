@@ -1166,6 +1166,14 @@ unsigned int snapshot_additional_pages(struct zone *zone)
 {
 	unsigned int rtree, nodes;
 
+	/*
+	 * Estimation of needed pages for ZONE_CMA is already considered
+	 * when calculating other zones since span of ZONE_CMA is subset
+	 * of other zones.
+	 */
+	if (is_zone_cma(zone))
+		return 0;
+
 	rtree = nodes = DIV_ROUND_UP(zone->spanned_pages, BM_BITS_PER_BLOCK);
 	rtree += DIV_ROUND_UP(rtree * sizeof(struct rtree_node),
 			      LINKED_PAGE_DATA_SIZE);

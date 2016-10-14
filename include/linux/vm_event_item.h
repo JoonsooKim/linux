@@ -19,7 +19,15 @@
 #define HIGHMEM_ZONE(xx)
 #endif
 
-#define FOR_ALL_ZONES(xx) DMA_ZONE(xx) DMA32_ZONE(xx) xx##_NORMAL, HIGHMEM_ZONE(xx) xx##_MOVABLE
+#ifdef CONFIG_CMA
+#define MOVABLE_ZONE(xx) xx##_MOVABLE,
+#define CMA_ZONE(xx) xx##_CMA
+#else
+#define MOVABLE_ZONE(xx) xx##_MOVABLE
+#define CMA_ZONE(xx)
+#endif
+
+#define FOR_ALL_ZONES(xx) DMA_ZONE(xx) DMA32_ZONE(xx) xx##_NORMAL, HIGHMEM_ZONE(xx) MOVABLE_ZONE(xx) CMA_ZONE(xx)
 
 enum vm_event_item { PGPGIN, PGPGOUT, PSWPIN, PSWPOUT,
 		FOR_ALL_ZONES(PGALLOC),

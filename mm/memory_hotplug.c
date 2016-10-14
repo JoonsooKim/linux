@@ -1887,6 +1887,9 @@ static int __ref __offline_pages(unsigned long start_pfn,
 	if (zone_idx(zone) <= ZONE_NORMAL && !can_offline_normal(zone, nr_pages))
 		return -EINVAL;
 
+	if (is_zone_cma(zone))
+		return -EINVAL;
+
 	/* set above range as isolated */
 	ret = start_isolate_page_range(start_pfn, end_pfn,
 				       MIGRATE_MOVABLE, true);

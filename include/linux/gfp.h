@@ -302,6 +302,12 @@ static inline bool gfpflags_allow_blocking(const gfp_t gfp_flags)
 #define OPT_ZONE_DMA32 ZONE_NORMAL
 #endif
 
+#ifdef CONFIG_CMA
+#define OPT_ZONE_CMA ZONE_CMA
+#else
+#define OPT_ZONE_CMA ZONE_MOVABLE
+#endif
+
 /*
  * GFP_ZONE_TABLE is a word size bitstring that is used for looking up the
  * zone to use given the lowest 4 bits of gfp_t. Entries are ZONE_SHIFT long
@@ -332,7 +338,6 @@ static inline bool gfpflags_allow_blocking(const gfp_t gfp_flags)
  *       0xe    => BAD (MOVABLE+DMA32+HIGHMEM)
  *       0xf    => BAD (MOVABLE+DMA32+HIGHMEM+DMA)
  *
- * GFP_ZONES_SHIFT must be <= 2 on 32 bit platforms.
  */
 
 #if defined(CONFIG_ZONE_DEVICE) && (MAX_NR_ZONES-1) <= 4
@@ -342,19 +347,21 @@ static inline bool gfpflags_allow_blocking(const gfp_t gfp_flags)
 #define GFP_ZONES_SHIFT ZONES_SHIFT
 #endif
 
-#if 16 * GFP_ZONES_SHIFT > BITS_PER_LONG
-#error GFP_ZONES_SHIFT too large to create GFP_ZONE_TABLE integer
+#if !defined(CONFIG_64BITS) && GFP_ZONES_SHIFT > 2
+#define GFP_ZONE_TABLE_CAST unsigned long long
+#else
+#define GFP_ZONE_TABLE_CAST unsigned long
 #endif
 
 #define GFP_ZONE_TABLE ( \
-	(ZONE_NORMAL << 0 * GFP_ZONES_SHIFT)				       \
-	| (OPT_ZONE_DMA << ___GFP_DMA * GFP_ZONES_SHIFT)		       \
-	| (OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * GFP_ZONES_SHIFT)	       \
-	| (OPT_ZONE_DMA32 << ___GFP_DMA32 * GFP_ZONES_SHIFT)		       \
-	| (ZONE_NORMAL << ___GFP_MOVABLE * GFP_ZONES_SHIFT)		       \
-	| (OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * GFP_ZONES_SHIFT)    \
-	| (ZONE_MOVABLE << (___GFP_MOVABLE | ___GFP_HIGHMEM) * GFP_ZONES_SHIFT)\
-	| (OPT_ZONE_DMA32 << (___GFP_MOVABLE | ___GFP_DMA32) * GFP_ZONES_SHIFT)\
+	((GFP_ZONE_TABLE_CAST) ZONE_NORMAL << 0 * GFP_ZONES_SHIFT)					\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_DMA << ___GFP_DMA * GFP_ZONES_SHIFT)				\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_HIGHMEM << ___GFP_HIGHMEM * GFP_ZONES_SHIFT)			\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_DMA32 << ___GFP_DMA32 * GFP_ZONES_SHIFT)			\
+	| ((GFP_ZONE_TABLE_CAST) ZONE_NORMAL << ___GFP_MOVABLE * GFP_ZONES_SHIFT)			\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_DMA << (___GFP_MOVABLE | ___GFP_DMA) * GFP_ZONES_SHIFT)	\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_CMA << (___GFP_MOVABLE | ___GFP_HIGHMEM) * GFP_ZONES_SHIFT)	\
+	| ((GFP_ZONE_TABLE_CAST) OPT_ZONE_DMA32 << (___GFP_MOVABLE | ___GFP_DMA32) * GFP_ZONES_SHIFT)	\
 )
 
 /*

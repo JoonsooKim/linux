@@ -334,6 +334,9 @@ enum zone_type {
 	ZONE_HIGHMEM,
 #endif
 	ZONE_MOVABLE,
+#ifdef CONFIG_CMA
+	ZONE_CMA,
+#endif
 #ifdef CONFIG_ZONE_DEVICE
 	ZONE_DEVICE,
 #endif
@@ -858,11 +861,37 @@ static inline int zone_movable_is_highmem(void)
 }
 #endif
 
+static inline int is_zone_cma_idx(enum zone_type idx)
+{
+#ifdef CONFIG_CMA
+	return idx == ZONE_CMA;
+#else
+	return 0;
+#endif
+}
+
+static inline int is_zone_cma(struct zone *zone)
+{
+	int zone_idx = zone_idx(zone);
+
+	return is_zone_cma_idx(zone_idx);
+}
+
+static inline int zone_cma_is_highmem(void)
+{
+#ifdef CONFIG_HIGHMEM
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 static inline int is_highmem_idx(enum zone_type idx)
 {
 #ifdef CONFIG_HIGHMEM
 	return (idx == ZONE_HIGHMEM ||
-		(idx == ZONE_MOVABLE && zone_movable_is_highmem()));
+		(idx == ZONE_MOVABLE && zone_movable_is_highmem()) ||
+		(is_zone_cma_idx(idx) && zone_cma_is_highmem()));
 #else
 	return 0;
 #endif
