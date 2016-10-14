@@ -1,5 +1,10 @@
 Hello,
 
+Changes from v5
+o Rebase on next-20161013
+o Cosmetic change on patch 1
+o Optimize span of ZONE_CMA on multiple node system
+
 Changes from v4
 o Rebase on next-20160825
 o Add general fix patch for lowmem reserve
