@@ -1448,6 +1448,47 @@ static const struct file_operations proc_zoneinfo_file_operations = {
 	.release	= seq_release,
 };
 
+static void fraginfo_show_print(struct seq_file *m, pg_data_t *pgdat,
+						struct zone *zone)
+{
+	int order;
+	int index;
+
+	seq_printf(m, "Node %d, zone %8s ", pgdat->node_id, zone->name);
+	for (order = 0; order < MAX_ORDER; ++order) {
+		index = zone->free_area[order].unusable_free_avg /
+			(1 << UNUSABLE_INDEX_FACTOR);
+		seq_printf(m, "0.%03d ", index);
+	}
+	seq_putc(m, '\n');
+}
+
+static int fraginfo_show(struct seq_file *m, void *arg)
+{
+	pg_data_t *pgdat = (pg_data_t *)arg;
+	walk_zones_in_node(m, pgdat, fraginfo_show_print);
+	return 0;
+}
+
+static const struct seq_operations fraginfo_op = {
+	.start	= frag_start,
+	.next	= frag_next,
+	.stop	= frag_stop,
+	.show	= fraginfo_show,
+};
+
+static int fraginfo_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &fraginfo_op);
+}
+
+static const struct file_operations fraginfo_file_operations = {
+	.open		= fraginfo_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+
 enum writeback_stat_item {
 	NR_DIRTY_THRESHOLD,
 	NR_DIRTY_BG_THRESHOLD,
@@ -1778,6 +1819,7 @@ static int __init setup_vmstat(void)
 	proc_create("pagetypeinfo", S_IRUGO, NULL, &pagetypeinfo_file_ops);
 	proc_create("vmstat", S_IRUGO, NULL, &proc_vmstat_file_operations);
 	proc_create("zoneinfo", S_IRUGO, NULL, &proc_zoneinfo_file_operations);
+	proc_create("fraginfo", S_IRUGO, NULL, &fraginfo_file_operations);
 #endif
 	return 0;
 }
