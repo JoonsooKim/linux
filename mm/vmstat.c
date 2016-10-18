@@ -821,7 +821,7 @@ unsigned long node_page_state(struct pglist_data *pgdat,
 struct contig_page_info {
 	unsigned long free_pages;
 	unsigned long free_blocks_total;
-	unsigned long free_blocks_suitable;
+	unsigned long free_blocks_order[MAX_ORDER];
 };
 
 /*
@@ -833,16 +833,14 @@ struct contig_page_info {
  * figured out from userspace
  */
 static void fill_contig_page_info(struct zone *zone,
-				unsigned int suitable_order,
 				struct contig_page_info *info)
 {
 	unsigned int order;
 
 	info->free_pages = 0;
 	info->free_blocks_total = 0;
-	info->free_blocks_suitable = 0;
 
-	for (order = 0; order < MAX_ORDER; order++) {
+	for (order = MAX_ORDER - 1; order >= 0 && order < MAX_ORDER; order--) {
 		unsigned long blocks;
 
 		/* Count number of free blocks */
@@ -851,11 +849,12 @@ static void fill_contig_page_info(struct zone *zone,
 
 		/* Count free base pages */
 		info->free_pages += blocks << order;
+		info->free_blocks_order[order] = blocks;
+		if (order == MAX_ORDER - 1)
+			continue;
 
-		/* Count the suitable free blocks */
-		if (order >= suitable_order)
-			info->free_blocks_suitable += blocks <<
-						(order - suitable_order);
+		info->free_blocks_order[order] +=
+			(info->free_blocks_order[order + 1] << 1);
 	}
 }
 
@@ -874,7 +873,7 @@ static int __fragmentation_index(unsigned int order, struct contig_page_info *in
 		return 0;
 
 	/* Fragmentation index only makes sense when a request would fail */
-	if (info->free_blocks_suitable)
+	if (info->free_blocks_order[order])
 		return -1000;
 
 	/*
@@ -891,7 +890,7 @@ int fragmentation_index(struct zone *zone, unsigned int order)
 {
 	struct contig_page_info info;
 
-	fill_contig_page_info(zone, order, &info);
+	fill_contig_page_info(zone, &info);
 	return __fragmentation_index(order, &info);
 }
 #endif
@@ -1811,7 +1810,7 @@ static int unusable_free_index(unsigned int order,
 	 * 0 => no fragmentation
 	 * 1 => high fragmentation
 	 */
-	return div_u64((info->free_pages - (info->free_blocks_suitable << order)) * 1000ULL, info->free_pages);
+	return div_u64((info->free_pages - (info->free_blocks_order[order] << order)) * 1000ULL, info->free_pages);
 
 }
 
@@ -1825,8 +1824,8 @@ static void unusable_show_print(struct seq_file *m,
 	seq_printf(m, "Node %d, zone %8s ",
 				pgdat->node_id,
 				zone->name);
+	fill_contig_page_info(zone, &info);
 	for (order = 0; order < MAX_ORDER; ++order) {
-		fill_contig_page_info(zone, order, &info);
 		index = unusable_free_index(order, &info);
 		seq_printf(m, "%d.%03d ", index / 1000, index % 1000);
 	}
@@ -1887,8 +1886,8 @@ static void extfrag_show_print(struct seq_file *m,
 	seq_printf(m, "Node %d, zone %8s ",
 				pgdat->node_id,
 				zone->name);
+	fill_contig_page_info(zone, &info);
 	for (order = 0; order < MAX_ORDER; ++order) {
-		fill_contig_page_info(zone, order, &info);
 		index = __fragmentation_index(order, &info);
 		seq_printf(m, "%d.%03d ", index / 1000, index % 1000);
 	}
