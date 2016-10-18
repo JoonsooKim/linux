@@ -90,6 +90,7 @@ extern int page_group_by_mobility_disabled;
 struct free_area {
 	struct list_head	free_list[MIGRATE_TYPES];
 	unsigned long		nr_free;
+	unsigned long		unusable_free_avg;
 };
 
 struct pglist_data;
@@ -447,6 +448,7 @@ struct zone {
 
 	/* free areas of different sizes */
 	struct free_area	free_area[MAX_ORDER];
+	unsigned long		unusable_free_index_updated;
 
 	/* zone flags, see below */
 	unsigned long		flags;

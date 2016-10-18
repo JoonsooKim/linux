@@ -816,14 +816,6 @@ unsigned long node_page_state(struct pglist_data *pgdat,
 }
 #endif
 
-#ifdef CONFIG_COMPACTION
-
-struct contig_page_info {
-	unsigned long free_pages;
-	unsigned long free_blocks_total;
-	unsigned long free_blocks_order[MAX_ORDER];
-};
-
 /*
  * Calculate the number of free pages in a zone, how many contiguous
  * pages are free and how many are large enough to satisfy an allocation of
@@ -832,7 +824,7 @@ struct contig_page_info {
  * migrated. Calculating that is possible, but expensive and can be
  * figured out from userspace
  */
-static void fill_contig_page_info(struct zone *zone,
+void fill_contig_page_info(struct zone *zone,
 				struct contig_page_info *info)
 {
 	unsigned int order;
@@ -858,6 +850,7 @@ static void fill_contig_page_info(struct zone *zone,
 	}
 }
 
+#ifdef CONFIG_COMPACTION
 /*
  * A fragmentation index only makes sense if an allocation of a requested
  * size would fail. If that is true, the fragmentation index indicates
@@ -1790,13 +1783,11 @@ static int __init setup_vmstat(void)
 }
 module_init(setup_vmstat)
 
-#if defined(CONFIG_DEBUG_FS) && defined(CONFIG_COMPACTION)
-
 /*
  * Return an index indicating how much of the available free memory is
  * unusable for an allocation of the requested size.
  */
-static int unusable_free_index(unsigned int order,
+int unusable_free_index(unsigned int order,
 				struct contig_page_info *info)
 {
 	/* No free memory is interpreted as all free memory is unusable */
@@ -1814,6 +1805,7 @@ static int unusable_free_index(unsigned int order,
 
 }
 
+#if defined(CONFIG_DEBUG_FS) && defined(CONFIG_COMPACTION)
 static void unusable_show_print(struct seq_file *m,
 					pg_data_t *pgdat, struct zone *zone)
 {

@@ -754,6 +754,32 @@ static inline int page_is_buddy(struct page *page, struct page *buddy,
 	return 0;
 }
 
+static void update_unusable_free_index(struct zone *zone)
+{
+	struct contig_page_info info;
+	unsigned long val;
+	unsigned int order;
+	struct free_area *free_area;
+
+	do {
+		if (unlikely(time_before(jiffies,
+			zone->unusable_free_index_updated + HZ / 10)))
+			return;
+
+		fill_contig_page_info(zone, &info);
+		for (order = 0; order < MAX_ORDER; order++) {
+			free_area = &zone->free_area[order];
+
+			val = unusable_free_index(order, &info);
+			/* decay value contribution by 99% in 1 min */
+			ewma_add(free_area->unusable_free_avg, val,
+					128, UNUSABLE_INDEX_FACTOR);
+		}
+
+		zone->unusable_free_index_updated = jiffies + HZ / 10;
+	} while (1);
+}
+
 /*
  * Freeing function for a buddy system allocator.
  *
@@ -878,6 +904,8 @@ done_merging:
 	list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
 out:
 	zone->free_area[order].nr_free++;
+
+	update_unusable_free_index(zone);
 }
 
 /*
@@ -1802,6 +1830,7 @@ struct page *__rmqueue_smallest(struct zone *zone, unsigned int order,
 		area->nr_free--;
 		expand(zone, page, order, current_order, area, migratetype);
 		set_pcppage_migratetype(page, migratetype);
+		update_unusable_free_index(zone);
 		return page;
 	}
 
@@ -2174,6 +2203,7 @@ __rmqueue_fallback(struct zone *zone, unsigned int order, int start_migratetype)
 		 * fallback only via special __rmqueue_cma_fallback() function
 		 */
 		set_pcppage_migratetype(page, start_migratetype);
+		update_unusable_free_index(zone);
 
 		trace_mm_page_alloc_extfrag(page, order, current_order,
 			start_migratetype, fallback_mt);
@@ -5127,7 +5157,9 @@ static void __meminit zone_init_free_lists(struct zone *zone)
 	for_each_migratetype_order(order, t) {
 		INIT_LIST_HEAD(&zone->free_area[order].free_list[t]);
 		zone->free_area[order].nr_free = 0;
+		zone->free_area[order].unusable_free_avg = 0;
 	}
+	zone->unusable_free_index_updated = jiffies;
 }
 
 #ifndef __HAVE_ARCH_MEMMAP_INIT

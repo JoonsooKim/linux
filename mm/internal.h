@@ -113,6 +113,12 @@ struct alloc_context {
 	bool spread_dirty_pages;
 };
 
+struct contig_page_info {
+	unsigned long free_pages;
+	unsigned long free_blocks_total;
+	unsigned long free_blocks_order[MAX_ORDER];
+};
+
 #define ac_classzone_idx(ac) zonelist_zone_idx(ac->preferred_zoneref)
 
 /*
@@ -157,6 +163,21 @@ extern void prep_compound_page(struct page *page, unsigned int order);
 extern void post_alloc_hook(struct page *page, unsigned int order,
 					gfp_t gfp_flags);
 extern int user_min_free_kbytes;
+
+#define ewma_add(ewma, val, weight, factor)				\
+({									\
+	(ewma) *= (weight) - 1;						\
+	(ewma) += (val) << factor;					\
+	(ewma) /= (weight);						\
+	(ewma) >> factor;						\
+})
+
+#define UNUSABLE_INDEX_FACTOR (10)
+
+extern void fill_contig_page_info(struct zone *zone,
+				struct contig_page_info *info);
+extern int unusable_free_index(unsigned int order,
+				struct contig_page_info *info);
 
 #if defined CONFIG_COMPACTION || defined CONFIG_CMA
 
