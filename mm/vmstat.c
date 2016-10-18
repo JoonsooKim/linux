@@ -1138,7 +1138,7 @@ static void walk_zones_in_node(struct seq_file *m, pg_data_t *pgdat,
 #endif
 
 #ifdef CONFIG_PROC_FS
-static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
+static void buddyinfo_show_print(struct seq_file *m, pg_data_t *pgdat,
 						struct zone *zone)
 {
 	int order;
@@ -1152,10 +1152,10 @@ static void frag_show_print(struct seq_file *m, pg_data_t *pgdat,
 /*
  * This walks the free areas for each zone.
  */
-static int frag_show(struct seq_file *m, void *arg)
+static int buddyinfo_show(struct seq_file *m, void *arg)
 {
 	pg_data_t *pgdat = (pg_data_t *)arg;
-	walk_zones_in_node(m, pgdat, frag_show_print);
+	walk_zones_in_node(m, pgdat, buddyinfo_show_print);
 	return 0;
 }
 
@@ -1300,20 +1300,20 @@ static int pagetypeinfo_show(struct seq_file *m, void *arg)
 	return 0;
 }
 
-static const struct seq_operations fragmentation_op = {
+static const struct seq_operations buddyinfo_op = {
 	.start	= frag_start,
 	.next	= frag_next,
 	.stop	= frag_stop,
-	.show	= frag_show,
+	.show	= buddyinfo_show,
 };
 
-static int fragmentation_open(struct inode *inode, struct file *file)
+static int buddyinfo_open(struct inode *inode, struct file *file)
 {
-	return seq_open(file, &fragmentation_op);
+	return seq_open(file, &buddyinfo_op);
 }
 
-static const struct file_operations fragmentation_file_operations = {
-	.open		= fragmentation_open,
+static const struct file_operations buddyinfo_file_operations = {
+	.open		= buddyinfo_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
@@ -1781,7 +1781,7 @@ static int __init setup_vmstat(void)
 	start_shepherd_timer();
 #endif
 #ifdef CONFIG_PROC_FS
-	proc_create("buddyinfo", S_IRUGO, NULL, &fragmentation_file_operations);
+	proc_create("buddyinfo", S_IRUGO, NULL, &buddyinfo_file_operations);
 	proc_create("pagetypeinfo", S_IRUGO, NULL, &pagetypeinfo_file_ops);
 	proc_create("vmstat", S_IRUGO, NULL, &proc_vmstat_file_operations);
 	proc_create("zoneinfo", S_IRUGO, NULL, &proc_zoneinfo_file_operations);
