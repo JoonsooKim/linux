@@ -218,6 +218,7 @@ kmalloc_order(size_t size, gfp_t flags, unsigned int order)
 {
 	void *ret = (void *) __get_free_pages(flags | __GFP_COMP, order);
 	kmemleak_alloc(ret, size, 1, flags);
+	kasan_kmalloc_large(ret, size);
 	return ret;
 }
 
@@ -242,7 +243,10 @@ extern void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order);
 static __always_inline void *
 kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 {
-	return kmem_cache_alloc(s, gfpflags);
+	void *ret = kmem_cache_alloc(s, gfpflags);
+
+	kasan_kmalloc(s, ret, size);
+	return ret;
 }
 
 static __always_inline void *
