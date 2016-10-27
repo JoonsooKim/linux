@@ -3232,6 +3232,9 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 	 * the possible location of the free pointer.
 	 */
 	size = ALIGN(size, sizeof(void *));
+#ifdef CONFIG_KASAN
+	size = ALIGN(size, 1UL << KASAN_SHADOW_SCALE_SHIFT);
+#endif
 
 #ifdef CONFIG_SLUB_DEBUG
 	/*

@@ -73,6 +73,7 @@ config ARM
 	select HAVE_SYSCALL_TRACEPOINTS
 	select HAVE_UID16
 	select HAVE_VIRT_CPU_ACCOUNTING_GEN
+	select HAVE_ARCH_KASAN
 	select IRQ_FORCED_THREADING
 	select MODULES_USE_ELF_REL
 	select NO_BOOTMEM
@@ -1465,6 +1466,13 @@ config PAGE_OFFSET
 	default 0x80000000 if VMSPLIT_2G
 	default 0xB0000000 if VMSPLIT_3G_OPT
 	default 0xC0000000
+
+config KASAN_SHADOW_OFFSET
+	hex
+	default 0x1f000000 if VMSPLIT_1G
+	default 0x5f000000 if VMSPLIT_2G
+	default 0x8f000000 if VMSPLIT_3G_OPT
+	default 0x9f000000
 
 config NR_CPUS
 	int "Maximum number of CPUs (2-32)"

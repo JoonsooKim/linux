@@ -2,6 +2,8 @@
 # Makefile for some libs needed in the kernel.
 #
 
+KASAN_SANITIZE_smp_processor_id.o := n
+
 ifdef CONFIG_FUNCTION_TRACER
 ORIG_CFLAGS := $(KBUILD_CFLAGS)
 KBUILD_CFLAGS = $(subst $(CC_FLAGS_FTRACE),,$(ORIG_CFLAGS))
