@@ -1,4 +1,7 @@
 ifdef CONFIG_KASAN
+ifndef CONFIG_KASAN_SHADOW_OFFSET
+	CONFIG_KASAN_SHADOW_OFFSET := 0
+endif
 ifdef CONFIG_KASAN_INLINE
 	call_threshold := 10000
 else
