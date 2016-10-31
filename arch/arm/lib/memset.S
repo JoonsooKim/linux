@@ -28,7 +28,9 @@
  * memset again.
  */
 
+.weak memset
 ENTRY(memset)
+ENTRY(__memset)
 	ands	r3, r0, #3		@ 1 unaligned?
 	bne	1b			@ 1
 /*
@@ -125,3 +127,4 @@ ENTRY(memset)
 	strneb	r1, [r0], #1
 	mov	pc, lr
 ENDPROC(memset)
+ENDPROC(__memset)

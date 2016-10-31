@@ -26,7 +26,9 @@
  * occurring in the opposite direction.
  */
 
+.weak memmove
 ENTRY(memmove)
+ENTRY(__memmove)
 
 		subs	ip, r0, r1
 		cmphi	r2, ip
@@ -197,3 +199,4 @@ ENTRY(memmove)
 18:		backward_copy_shift	push=24	pull=8
 
 ENDPROC(memmove)
+ENDPROC(__memmove)
