@@ -15,18 +15,22 @@ extern char * strchr(const char * s, int c);
 #define __HAVE_ARCH_MEMCPY
 extern void * memcpy(void *, const void *, __kernel_size_t);
 extern void * __memcpy(void *, const void *, __kernel_size_t);
+extern void * ____memcpy(void *, const void *, __kernel_size_t);
 
 #define __HAVE_ARCH_MEMMOVE
 extern void * memmove(void *, const void *, __kernel_size_t);
 extern void * __memmove(void *, const void *, __kernel_size_t);
+extern void * ____memmove(void *, const void *, __kernel_size_t);
 
 #define __HAVE_ARCH_MEMCHR
 extern void * memchr(const void *, int, __kernel_size_t);
 extern void * __memchr(const void *, int, __kernel_size_t);
+extern void * ____memchr(const void *, int, __kernel_size_t);
 
 #define __HAVE_ARCH_MEMSET
 extern void * memset(void *, int, __kernel_size_t);
 extern void * __memset(void *, int, __kernel_size_t);
+extern void * ____memset(void *, int, __kernel_size_t);
 
 extern void __memzero(void *ptr, __kernel_size_t n);
 
@@ -44,7 +48,15 @@ extern void __memzero(void *ptr, __kernel_size_t n);
 	})
 #endif
 
-#if defined(CONFIG_KASAN) && !defined(__SANITIZE_ADDRESS__)
+#if defined(CONFIG_KASAN)
+
+#if !defined(__SANITIZE_ADDRESS__)
+#define memcpy(dst, src, len) ____memcpy(dst, src, len)
+#define memmove(dst, src, len) ____memmove(dst, src, len)
+#define memchr(p, c, len) ____memchr(p, c, len)
+#define memset(p, c, len) ____memset(p, c, len)
+
+#else
 #undef memcpy
 #undef memmove
 #undef memchr
@@ -54,6 +66,9 @@ extern void __memzero(void *ptr, __kernel_size_t n);
 #define memmove(dst, src, len) __memmove(dst, src, len)
 #define memchr(p, c, len) __memchr(p, c, len)
 #define memset(p, c, len) __memset(p, c, len)
+
+#endif
+
 #endif
 
 #endif
