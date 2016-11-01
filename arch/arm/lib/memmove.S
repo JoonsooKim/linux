@@ -26,9 +26,10 @@
  * occurring in the opposite direction.
  */
 
-.weak memmove
+.weak __memmove
 ENTRY(memmove)
 ENTRY(__memmove)
+ENTRY(____memmove)
 
 		subs	ip, r0, r1
 		cmphi	r2, ip
@@ -200,3 +201,4 @@ ENTRY(__memmove)
 
 ENDPROC(memmove)
 ENDPROC(__memmove)
+ENDPROC(____memmove)

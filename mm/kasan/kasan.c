@@ -261,38 +261,38 @@ static __always_inline void check_memory_region(unsigned long addr,
 void __asan_loadN(unsigned long addr, size_t size);
 void __asan_storeN(unsigned long addr, size_t size);
 
-#undef memcpy
-void *memcpy(void *dst, const void *src, size_t len)
+#undef __memcpy
+void *__memcpy(void *dst, const void *src, size_t len)
 {
 	__asan_loadN((unsigned long)src, len);
 	__asan_storeN((unsigned long)dst, len);
 
-	return __memcpy(dst, src, len);
+	return ____memcpy(dst, src, len);
 }
 
-#undef memmove
-void *memmove(void *dst, const void *src, size_t len)
+#undef __memmove
+void *__memmove(void *dst, const void *src, size_t len)
 {
 	__asan_loadN((unsigned long)src, len);
 	__asan_storeN((unsigned long)dst, len);
 
-	return __memmove(dst, src, len);
+	return ____memmove(dst, src, len);
 }
 
-#undef memchr
-void *memchr(const void *p, int c, size_t len)
+#undef __memchr
+void *__memchr(const void *p, int c, size_t len)
 {
 	__asan_loadN((unsigned long)p, len);
 
-	return __memchr(p, c, len);
+	return ____memchr(p, c, len);
 }
 
-#undef memset
-void *memset(void *p, int c, size_t len)
+#undef __memset
+void *__memset(void *p, int c, size_t len)
 {
 	__asan_storeN((unsigned long)p, len);
 
-	return __memset(p, c, len);
+	return ____memset(p, c, len);
 }
 
 void kasan_alloc_pages(struct page *page, unsigned int order)

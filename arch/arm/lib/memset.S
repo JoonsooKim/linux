@@ -28,9 +28,10 @@
  * memset again.
  */
 
-.weak memset
+.weak __memset
 ENTRY(memset)
 ENTRY(__memset)
+ENTRY(____memset)
 	ands	r3, r0, #3		@ 1 unaligned?
 	bne	1b			@ 1
 /*
@@ -128,3 +129,4 @@ ENTRY(__memset)
 	mov	pc, lr
 ENDPROC(memset)
 ENDPROC(__memset)
+ENDPROC(____memset)
