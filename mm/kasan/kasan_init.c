@@ -120,6 +120,7 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 	pgd_t *pgd = pgd_offset_k(addr);
 	unsigned long next;
 
+	printk("%s: %p - %p\n", __func__, shadow_start, shadow_end);
 	do {
 		next = pgd_addr_end(addr, end);
 
@@ -127,6 +128,7 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 			pud_t *pud;
 			pmd_t *pmd;
 
+			printk("%s: ALIGNED: 0x%lx - 0x%lx\n", __func__, addr, next);
 			/*
 			 * kasan_zero_pud should be populated with pmds
 			 * at this moment.
@@ -143,6 +145,7 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 			continue;
 		}
 
+		printk("%s: NOT ALIGNED: 0x%lx - 0x%lx\n", __func__, addr, next);
 		if (pgd_none(*pgd)) {
 			pgd_populate(&init_mm, pgd,
 				early_alloc(PAGE_SIZE, NUMA_NO_NODE));

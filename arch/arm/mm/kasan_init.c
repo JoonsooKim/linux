@@ -127,6 +127,7 @@ void __init kasan_early_init(void)
 static void __init clear_pgds(unsigned long start,
 			unsigned long end)
 {
+	printk("%s: 0x%lx - 0x%lx\n", __func__, start, end);
 	for (; start && start < end; start += PMD_SIZE)
 		pmd_clear(pmd_off_k(start));
 }
