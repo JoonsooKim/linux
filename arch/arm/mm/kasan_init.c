@@ -252,6 +252,10 @@ void __init kasan_init(void)
 			NUMA_NO_NODE);
 	}
 
+	create_mapping((unsigned long)kasan_mem_to_shadow(MODULES_VADDR),
+			(unsigned long)kasan_mem_to_shadow(MODULES_END),
+			NUMA_NO_NODE);
+
 	cpu_set_ttbr0(orig_ttbr0);
 	flush_cache_all();
 	local_flush_tlb_all();
