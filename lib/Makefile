@@ -3,6 +3,7 @@
 #
 
 KASAN_SANITIZE_smp_processor_id.o := n
+KASAN_SANITIZE_idr.o := n
 
 ifdef CONFIG_FUNCTION_TRACER
 ORIG_CFLAGS := $(KBUILD_CFLAGS)
