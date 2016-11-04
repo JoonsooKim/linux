@@ -270,6 +270,22 @@ static noinline void __init kasan_stack_oob(void)
 	*(volatile char *)p;
 }
 
+static noinline void __init kasan_stack_overflow(void)
+{
+	char stack_array[128];
+	volatile int i = 0;
+	char *p = &stack_array[i];
+
+	*(volatile char *)p;
+
+	/* Bail out if we touch the invalid region */
+	if ((unsigned long)p < ((unsigned long)end_of_stack(current)) +
+			KASAN_STACK_OVERFLOW_SIZE)
+		return;
+
+	kasan_stack_overflow();
+}
+
 static int __init kmalloc_tests_init(void)
 {
 	kmalloc_oob_right();
@@ -287,6 +303,7 @@ static int __init kmalloc_tests_init(void)
 	kmem_cache_oob();
 	kasan_stack_oob();
 	kasan_global_oob();
+	kasan_stack_overflow();
 	return -EAGAIN;
 }
 
