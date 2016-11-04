@@ -82,6 +82,14 @@ asmlinkage void kasan_unpoison_remaining_stack(void *sp)
 	__kasan_unpoison_stack(current, sp);
 }
 
+void kasan_poison_task_stack_end(struct task_struct *task)
+{
+	unsigned long *stackend = end_of_stack(task);
+
+	kasan_poison_shadow(stackend, KASAN_STACK_OVERFLOW_SIZE,
+			KASAN_STACK_OVERFLOW);
+}
+
 /*
  * All functions below always inlined so compiler could
  * perform better optimizations in each of __asan_loadX/__assn_storeX

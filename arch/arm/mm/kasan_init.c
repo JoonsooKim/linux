@@ -263,5 +263,7 @@ void __init kasan_init(void)
 
 	__memset(kasan_zero_page, 0, PAGE_SIZE);
 	pr_info("Kernel address sanitizer initialized\n");
+	kasan_unpoison_task_stack(&init_task);
+	kasan_poison_task_stack_end(&init_task);
 	init_task.kasan_depth = 0;
 }

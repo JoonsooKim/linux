@@ -17,6 +17,14 @@ struct vm_struct;
 #define KASAN_SHADOW_SCALE_SHIFT 3
 #define KASAN_SHADOW_OFFSET _AC(CONFIG_KASAN_SHADOW_OFFSET, UL)
 
+/*
+ * Should be large enough to prevent corruption of thread_info
+ * during kasan_report(). It uses printk() and printk() uses the stack
+ * by roughly 1024 bytes. So, we need 2048 bytes. See following logic.
+ * 1024 bytes for protection + 1024 bytes for reporting = 2048 bytes
+ */
+#define KASAN_STACK_OVERFLOW_SIZE 2048
+
 #include <asm/kasan.h>
 #include <asm/pgtable.h>
 
@@ -50,6 +58,8 @@ void kasan_unpoison_shadow(const void *address, size_t size);
 
 void kasan_unpoison_task_stack(struct task_struct *task);
 
+void kasan_poison_task_stack_end(struct task_struct *task);
+
 void kasan_alloc_pages(struct page *page, unsigned int order);
 void kasan_free_pages(struct page *page, unsigned int order);
 
@@ -74,6 +84,8 @@ void kasan_free_shadow(const struct vm_struct *vm);
 static inline void kasan_unpoison_shadow(const void *address, size_t size) {}
 
 static inline void kasan_unpoison_task_stack(struct task_struct *task) {}
+
+static inline void kasan_poison_task_stack_end(struct task_struct *task) {}
 
 static inline void kasan_enable_current(void) {}
 static inline void kasan_disable_current(void) {}

@@ -72,6 +72,7 @@ static void print_error_description(struct kasan_access_info *info)
 	case KASAN_STACK_MID:
 	case KASAN_STACK_RIGHT:
 	case KASAN_STACK_PARTIAL:
+	case KASAN_STACK_OVERFLOW:
 		bug_type = "out of bounds on stack";
 		break;
 	}
