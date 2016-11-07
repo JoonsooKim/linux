@@ -383,43 +383,33 @@ static int __meminit page_ext_callback(struct notifier_block *self,
 
 #endif
 
+static inline int sparse_early_nid(struct mem_section *section)
+{
+	return (section->section_mem_map >> SECTION_NID_SHIFT);
+}
+
 void __init page_ext_init(void)
 {
+	struct mem_section *ms;
+	unsigned long pnum;
 	unsigned long pfn;
 	int nid;
 
 	if (!invoke_need_callbacks())
 		return;
 
-	for_each_node_state(nid, N_MEMORY) {
-		unsigned long start_pfn, end_pfn;
+	for (pnum = 0; pnum < NR_MEM_SECTIONS; pnum++) {
+		if (!present_section_nr(pnum))
+			continue;
 
-		start_pfn = node_start_pfn(nid);
-		end_pfn = node_end_pfn(nid);
-		/*
-		 * start_pfn and end_pfn may not be aligned to SECTION and the
-		 * page->flags of out of node pages are not initialized.  So we
-		 * scan [start_pfn, the biggest section's pfn < end_pfn) here.
-		 */
-		for (pfn = start_pfn; pfn < end_pfn;
-			pfn = ALIGN(pfn + 1, PAGES_PER_SECTION)) {
+		ms = __nr_to_section(pnum);
+		pfn = section_nr_to_pfn(pnum);
+		nid = sparse_early_nid(ms);
 
-			if (!pfn_valid(pfn))
-				continue;
-			/*
-			 * Nodes's pfns can be overlapping.
-			 * We know some arch can have a nodes layout such as
-			 * -------------pfn-------------->
-			 * N0 | N1 | N2 | N0 | N1 | N2|....
-			 *
-			 * Take into account DEFERRED_STRUCT_PAGE_INIT.
-			 */
-			if (early_pfn_to_nid(pfn) != nid)
-				continue;
-			if (init_section_page_ext(pfn, nid))
-				goto oom;
-		}
+		if (init_section_page_ext(pfn, nid))
+			goto oom;
 	}
+
 	hotplug_memory_notifier(page_ext_callback, 0);
 	pr_info("allocated %ld bytes of page_ext\n", total_usage);
 	invoke_init_callbacks();
