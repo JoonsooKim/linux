@@ -138,6 +138,22 @@ static noinline void __init kmalloc_oob_16(void)
 	kfree(ptr2);
 }
 
+static noinline void __init kmalloc_oob_8(void)
+{
+	u64 *ptr1;
+	u64 ptr2 = 5;
+
+	pr_info("kmalloc out-of-bounds for 8-bytes access\n");
+	ptr1 = kmalloc(sizeof(*ptr1) - 3, GFP_KERNEL);
+	if (!ptr1) {
+		pr_err("Allocation failed\n");
+		return;
+	}
+
+	*ptr1 = ptr2;
+	kfree(ptr1);
+}
+
 static noinline void __init kmalloc_oob_in_memset(void)
 {
 	char *ptr;
@@ -263,6 +279,7 @@ static int __init kmalloc_tests_init(void)
 	kmalloc_oob_krealloc_more();
 	kmalloc_oob_krealloc_less();
 	kmalloc_oob_16();
+	kmalloc_oob_8();
 	kmalloc_oob_in_memset();
 	kmalloc_uaf();
 	kmalloc_uaf_memset();
