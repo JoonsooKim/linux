@@ -1848,6 +1848,87 @@ void compaction_unregister_node(struct node *node)
 }
 #endif /* CONFIG_SYSFS && CONFIG_NUMA */
 
+#define KCOMPACTD_INDEX_GAP (200)
+
+struct kcompactd_zone_state {
+	int target_order;
+	int target_ratio;
+	int failed;
+	unsigned long failed_time;
+	struct contig_page_info info;
+};
+
+struct kcompactd_state {
+	struct kcompactd_zone_state zone_state[MAX_NR_ZONES];
+};
+
+static int kcompactd_order;
+static unsigned int kcompactd_ratio;
+
+static ssize_t order_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", kcompactd_order);
+}
+
+static ssize_t order_store(struct kobject *kobj,
+			struct kobj_attribute *attr,
+			const char *buf, size_t count)
+{
+	int order;
+	int ret;
+
+	ret = kstrtoint(buf, 10, &order);
+	if (ret)
+		return -EINVAL;
+
+	/* kcompactd's compaction will be disabled when order is -1 */
+	if (order >= MAX_ORDER || order < -1)
+		return -EINVAL;
+
+	kcompactd_order = order;
+	return count;
+}
+
+static ssize_t ratio_show(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%u\n", kcompactd_ratio);
+}
+
+static ssize_t ratio_store(struct kobject *kobj,
+			struct kobj_attribute *attr,
+			const char *buf, size_t count)
+{
+	unsigned int ratio;
+	int ret;
+
+	ret = kstrtouint(buf, 10, &ratio);
+	if (ret)
+		return -EINVAL;
+
+	if (ratio > 1000)
+		return -EINVAL;
+
+	kcompactd_ratio = ratio;
+	return count;
+}
+
+static struct kobj_attribute order_attr = __ATTR_RW(order);
+static struct kobj_attribute ratio_attr = __ATTR_RW(ratio);
+
+static struct attribute *kcompactd_attrs[] = {
+	&order_attr.attr,
+	&ratio_attr.attr,
+	NULL,
+};
+
+static struct attribute_group kcompactd_attr_group = {
+	.attrs = kcompactd_attrs,
+	.name = "kcompactd",
+};
+
+
 static inline bool kcompactd_work_requested(pg_data_t *pgdat)
 {
 	return pgdat->kcompactd_max_order > 0 || kthread_should_stop();
@@ -1858,6 +1939,11 @@ static bool kcompactd_node_suitable(pg_data_t *pgdat)
 	int zoneid;
 	struct zone *zone;
 	enum zone_type classzone_idx = pgdat->kcompactd_classzone_idx;
+	int order;
+
+	order = pgdat->kcompactd_max_order;
+	if (order == INT_MAX)
+		order = -1;
 
 	for (zoneid = 0; zoneid <= classzone_idx; zoneid++) {
 		zone = &pgdat->node_zones[zoneid];
@@ -1865,12 +1951,114 @@ static bool kcompactd_node_suitable(pg_data_t *pgdat)
 		if (!populated_zone(zone))
 			continue;
 
-		if (compaction_suitable(zone, pgdat->kcompactd_max_order, 0,
-					classzone_idx) == COMPACT_CONTINUE)
+		if (compaction_suitable(zone, order, 0, classzone_idx)
+			== COMPACT_CONTINUE)
 			return true;
 	}
 
 	return false;
+}
+
+static int kcompactd_check_ratio(pg_data_t *pgdat, int zoneid)
+{
+	int i;
+	int unusable_free_avg;
+	struct zone *zone;
+	struct kcompactd_state *state;
+	struct kcompactd_zone_state *zone_state;
+	struct contig_page_info info;
+	int index;
+
+	state = pgdat->kcompactd_state;
+	zone_state = &state->zone_state[zoneid];
+	zone = &pgdat->node_zones[zoneid];
+
+	fill_contig_page_info(zone, &info);
+	for (i = PAGE_ALLOC_COSTLY_ORDER + 1; i <= kcompactd_order; i++) {
+		unusable_free_avg = zone->free_area[i].unusable_free_avg >>
+					UNUSABLE_INDEX_FACTOR;
+
+		if (unusable_free_avg >= kcompactd_ratio)
+			return i;
+
+		index = unusable_free_index(i, &info);
+		if (index >= kcompactd_ratio &&
+			(kcompactd_ratio > unusable_free_avg + KCOMPACTD_INDEX_GAP))
+			return i;
+	}
+
+	return -1;
+}
+
+static void kcompactd_check_result(pg_data_t *pgdat, int classzone_idx)
+{
+	int zoneid;
+	struct zone *zone;
+	struct kcompactd_state *state;
+	struct kcompactd_zone_state *zone_state;
+	int unusable_free_avg;
+	unsigned long flags;
+	int prev_index, curr_index;
+
+	for (zoneid = 0; zoneid <= classzone_idx; zoneid++) {
+		zone = &pgdat->node_zones[zoneid];
+		if (!populated_zone(zone))
+			continue;
+
+		state = pgdat->kcompactd_state;
+		zone_state = &state->zone_state[zoneid];
+		unusable_free_avg =
+			zone->free_area[zone_state->target_order].unusable_free_avg >>
+				UNUSABLE_INDEX_FACTOR;
+		if (unusable_free_avg < zone_state->target_ratio) {
+			zone_state->failed = 0;
+			continue;
+		}
+
+		prev_index = unusable_free_index(zone_state->target_order,
+						&zone_state->info);
+		spin_lock_irqsave(&zone->lock, flags);
+		fill_contig_page_info(zone, &zone_state->info);
+		spin_unlock_irqrestore(&zone->lock, flags);
+
+		curr_index = unusable_free_index(zone_state->target_order,
+						&zone_state->info);
+		if (curr_index < zone_state->target_ratio ||
+			curr_index < prev_index) {
+			zone_state->failed = 0;
+			continue;
+		}
+
+		zone_state->failed++;
+		zone_state->failed_time = jiffies;
+	}
+}
+
+static bool kcompactd_should_skip(pg_data_t *pgdat, int classzone_idx)
+{
+	struct kcompactd_state *state;
+	struct kcompactd_zone_state *zone_state;
+	int target_order;
+	unsigned long recharge_time;
+
+	target_order = kcompactd_check_ratio(pgdat, classzone_idx);
+	if (target_order < 0)
+		return true;
+
+	state = pgdat->kcompactd_state;
+	zone_state = &state->zone_state[classzone_idx];
+	if (!zone_state->failed)
+		return false;
+
+	if (target_order < zone_state->target_order)
+		return false;
+
+	recharge_time = zone_state->failed_time;
+	recharge_time += HZ * (1 << zone_state->failed);
+	if (time_after(jiffies, recharge_time))
+		return false;
+
+	return true;
 }
 
 static void kcompactd_do_work(pg_data_t *pgdat)
@@ -1880,6 +2068,7 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 	 * order is allocatable.
 	 */
 	int zoneid;
+	int cpu;
 	struct zone *zone;
 	struct compact_control cc = {
 		.order = pgdat->kcompactd_max_order,
@@ -1889,9 +2078,18 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 		.gfp_mask = GFP_KERNEL,
 
 	};
+	struct kcompactd_state *state;
+	struct kcompactd_zone_state *zone_state;
+	unsigned long flags;
 	trace_mm_compaction_kcompactd_wake(pgdat->node_id, cc.order,
 							cc.classzone_idx);
 	count_vm_event(KCOMPACTD_WAKE);
+
+	/* Force to run full compaction */
+	if (cc.order == INT_MAX) {
+		cc.order = -1;
+		cc.whole_zone = true;
+	}
 
 	for (zoneid = 0; zoneid <= cc.classzone_idx; zoneid++) {
 		int status;
@@ -1915,7 +2113,28 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 
 		if (kthread_should_stop())
 			return;
+
+		if (is_via_compact_memory(cc.order)) {
+			state = pgdat->kcompactd_state;
+			zone_state = &state->zone_state[zoneid];
+			zone_state->target_order =
+				kcompactd_check_ratio(pgdat, zoneid);
+			zone_state->target_ratio = kcompactd_ratio;
+			if (zone_state->target_order < 0)
+				continue;
+
+			spin_lock_irqsave(&zone->lock, flags);
+			fill_contig_page_info(zone, &zone_state->info);
+			spin_unlock_irqrestore(&zone->lock, flags);
+		}
+
 		status = compact_zone(zone, &cc);
+
+		VM_BUG_ON(!list_empty(&cc.freepages));
+		VM_BUG_ON(!list_empty(&cc.migratepages));
+
+		if (is_via_compact_memory(cc.order))
+			continue;
 
 		if (status == COMPACT_SUCCESS) {
 			compaction_defer_reset(zone, cc.order, false);
@@ -1926,9 +2145,6 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 			 */
 			defer_compaction(zone, cc.order);
 		}
-
-		VM_BUG_ON(!list_empty(&cc.freepages));
-		VM_BUG_ON(!list_empty(&cc.migratepages));
 	}
 
 	/*
@@ -1940,12 +2156,27 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 		pgdat->kcompactd_max_order = 0;
 	if (pgdat->kcompactd_classzone_idx >= cc.classzone_idx)
 		pgdat->kcompactd_classzone_idx = pgdat->nr_zones - 1;
+
+	/* Do not invoke compaction immediately if we did full compaction */
+	if (is_via_compact_memory(cc.order)) {
+		pgdat->kcompactd_max_order = 0;
+		cpu = get_cpu();
+		lru_add_drain_cpu(cpu);
+		drain_local_pages(NULL);
+		put_cpu();
+		kcompactd_check_result(pgdat, cc.classzone_idx);
+	}
 }
 
 void wakeup_kcompactd(pg_data_t *pgdat, int order, int classzone_idx)
 {
 	if (!order)
 		return;
+
+	if (order == INT_MAX) {
+		if (kcompactd_should_skip(pgdat, classzone_idx))
+			return;
+	}
 
 	if (pgdat->kcompactd_max_order < order)
 		pgdat->kcompactd_max_order = order;
@@ -2000,18 +2231,42 @@ static int kcompactd(void *p)
  */
 int kcompactd_run(int nid)
 {
+	int i;
+	struct kcompactd_state *state;
+	struct kcompactd_zone_state *zone_state;
 	pg_data_t *pgdat = NODE_DATA(nid);
-	int ret = 0;
+	struct zone *zone;
+	int ret = -ENOMEM;
 
 	if (pgdat->kcompactd)
 		return 0;
 
+	state = kzalloc(sizeof(struct kcompactd_state), GFP_KERNEL);
+	if (!state)
+		goto err;
+
+	for (i = 0; i < MAX_NR_ZONES; i++) {
+		zone = &pgdat->node_zones[i];
+		zone_state = &state->zone_state[i];
+		if (!populated_zone(zone))
+			continue;
+
+		zone_state->failed = 0;
+	}
+
 	pgdat->kcompactd = kthread_run(kcompactd, pgdat, "kcompactd%d", nid);
 	if (IS_ERR(pgdat->kcompactd)) {
-		pr_err("Failed to start kcompactd on node %d\n", nid);
 		ret = PTR_ERR(pgdat->kcompactd);
 		pgdat->kcompactd = NULL;
+		kfree(state);
+		goto err;
 	}
+	pgdat->kcompactd_state = (void *)state;
+
+	return 0;
+
+err:
+	pr_err("Failed to start kcompactd on node %d\n", nid);
 	return ret;
 }
 
@@ -2064,6 +2319,17 @@ static int __init kcompactd_init(void)
 		pr_err("kcompactd: failed to register hotplug callbacks.\n");
 		return ret;
 	}
+
+	kcompactd_order = -1;
+	kcompactd_ratio = 800;
+
+#ifdef CONFIG_SYSFS
+	ret = sysfs_create_group(mm_kobj, &kcompactd_attr_group);
+	if (ret) {
+		pr_err("kcompactd: failed to register sysfs callbacks.\n");
+		return ret;
+	}
+#endif
 
 	for_each_node_state(nid, N_MEMORY)
 		kcompactd_run(nid);

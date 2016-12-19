@@ -776,6 +776,7 @@ static void update_unusable_free_index(struct zone *zone)
 					128, UNUSABLE_INDEX_FACTOR);
 		}
 
+		wakeup_kcompactd(zone->zone_pgdat, INT_MAX, zone_idx(zone));
 		zone->unusable_free_index_updated = jiffies + HZ / 10;
 	} while (1);
 }
