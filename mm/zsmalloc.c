@@ -347,8 +347,7 @@ static void destroy_cache(struct zs_pool *pool)
 
 static unsigned long cache_alloc_handle(struct zs_pool *pool, gfp_t gfp)
 {
-	return (unsigned long)kmem_cache_alloc(pool->handle_cachep,
-			gfp & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
+	return (unsigned long)kmem_cache_alloc(pool->handle_cachep, gfp);
 }
 
 static void cache_free_handle(struct zs_pool *pool, unsigned long handle)
@@ -358,9 +357,8 @@ static void cache_free_handle(struct zs_pool *pool, unsigned long handle)
 
 static struct zspage *cache_alloc_zspage(struct zs_pool *pool, gfp_t flags)
 {
-	return kmem_cache_alloc(pool->zspage_cachep,
-			flags & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
-}
+	return kmem_cache_alloc(pool->zspage_cachep, flags);
+};
 
 static void cache_free_zspage(struct zs_pool *pool, struct zspage *zspage)
 {
@@ -1120,7 +1118,7 @@ static struct zspage *alloc_zspage(struct zs_pool *pool,
 	for (i = 0; i < class->pages_per_zspage; i++) {
 		struct page *page;
 
-		page = alloc_page(gfp);
+		page = alloc_page(gfp | __GFP_MOVABLE | __GFP_HIGHMEM);
 		if (!page) {
 			while (--i >= 0) {
 				dec_zone_page_state(pages[i], NR_ZSPAGES);
