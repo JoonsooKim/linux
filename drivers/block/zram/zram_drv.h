@@ -17,6 +17,7 @@
 
 #include <linux/spinlock.h>
 #include <linux/zsmalloc.h>
+#include <linux/spinlock.h>
 
 #include "zcomp.h"
 
@@ -63,6 +64,8 @@ static const size_t max_zpage_size = PAGE_SIZE / 4 * 3;
  */
 #define ZRAM_FLAG_SHIFT 24
 
+#define ZRAM_HASH_SIZE (1 << 10)
+
 /* Flags for zram pages (table[page_no].value) */
 enum zram_pageflags {
 	/* Page consists entirely of zeros */
@@ -75,6 +78,10 @@ enum zram_pageflags {
 /*-- Data structures */
 
 struct zram_entry {
+	struct rb_node rb_node;
+	u32 len;
+	u32 checksum;
+	unsigned long refcount;
 	unsigned long handle;
 };
 
@@ -97,8 +104,14 @@ struct zram_stats {
 	atomic_long_t max_used_pages;	/* no. of maximum pages stored */
 };
 
+struct zram_hash {
+	spinlock_t lock;
+	struct rb_root rb_root;
+};
+
 struct zram_meta {
 	struct zram_table_entry *table;
+	struct zram_hash *hash;
 	struct zs_pool *mem_pool;
 };
 

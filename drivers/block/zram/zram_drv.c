@@ -32,6 +32,7 @@
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 #include <linux/err.h>
+#include <linux/jhash.h>
 
 #include "zram_drv.h"
 
@@ -309,6 +310,11 @@ static inline int valid_io_request(struct zram *zram, struct bio *bio)
 	return 1;
 }
 
+static u32 zram_calc_checksum(unsigned char *mem)
+{
+	return jhash(mem, PAGE_SIZE, 0);
+}
+
 static struct zram_entry *zram_entry_alloc(struct zram_meta *meta,
 					unsigned int len)
 {
@@ -324,7 +330,61 @@ static struct zram_entry *zram_entry_alloc(struct zram_meta *meta,
 		return NULL;
 	}
 
+	RB_CLEAR_NODE(&entry->rb_node);
+	entry->refcount = 1;
+	entry->len = len;
+
 	return entry;
+}
+
+static void zram_entry_insert(struct zram *zram, struct zram_entry *new,
+				u32 checksum)
+{
+	struct zram_meta *meta = zram->meta;
+	struct zram_hash *hash;
+	struct rb_root *rb_root;
+	struct rb_node **rb_node, *parent = NULL;
+	struct zram_entry *entry;
+
+	new->checksum = checksum;
+	hash = &meta->hash[checksum % ZRAM_HASH_SIZE];
+	rb_root = &hash->rb_root;
+
+	spin_lock(&hash->lock);
+	rb_node = &rb_root->rb_node;
+	while (*rb_node) {
+		parent = *rb_node;
+		entry = rb_entry(parent, struct zram_entry, rb_node);
+		if (checksum < entry->checksum)
+			rb_node = &parent->rb_left;
+		else if (checksum > entry->checksum)
+			rb_node = &parent->rb_right;
+		else
+			rb_node = &parent->rb_left;
+	}
+
+	rb_link_node(&new->rb_node, parent, rb_node);
+	rb_insert_color(&new->rb_node, rb_root);
+	spin_unlock(&hash->lock);
+}
+
+static bool zram_entry_match(struct zram *zram, struct zcomp_strm *zstrm,
+				struct zram_entry *entry, unsigned char *mem)
+{
+	bool match = false;
+	unsigned char *cmem;
+	struct zram_meta *meta = zram->meta;
+
+	cmem = zs_map_object(meta->mem_pool, entry->handle, ZS_MM_RO);
+	if (entry->len == PAGE_SIZE) {
+		match = !memcmp(mem, cmem, PAGE_SIZE);
+	} else {
+		if (!zcomp_decompress(zram->comp, cmem, entry->len, zstrm->buffer))
+			match = !memcmp(mem, zstrm->buffer, PAGE_SIZE);
+	}
+	zs_unmap_object(meta->mem_pool, entry->handle);
+
+	return match;
 }
 
 static inline void zram_entry_free(struct zram_meta *meta,
@@ -334,9 +394,87 @@ static inline void zram_entry_free(struct zram_meta *meta,
 	kfree(entry);
 }
 
+static bool zram_entry_put(struct zram_meta *meta,
+			struct zram_entry *entry, bool populated)
+{
+	struct zram_hash *hash;
+	u32 checksum;
+
+	if (!populated)
+		goto free;
+
+	checksum = entry->checksum;
+	hash = &meta->hash[checksum % ZRAM_HASH_SIZE];
+
+	spin_lock(&hash->lock);
+	entry->refcount--;
+	if (!entry->refcount) {
+		populated = false;
+		rb_erase(&entry->rb_node, &hash->rb_root);
+		RB_CLEAR_NODE(&entry->rb_node);
+	}
+	spin_unlock(&hash->lock);
+
+free:
+	if (!populated)
+		zram_entry_free(meta, entry);
+
+	return populated;
+}
+
+static struct zram_entry *zram_entry_get(struct zram *zram,
+				struct zcomp_strm *zstrm,
+				unsigned char *mem, u32 checksum)
+{
+	struct zram_meta *meta = zram->meta;
+	struct zram_hash *hash;
+	struct zram_entry *entry;
+	struct rb_node *rb_node;
+
+	hash = &meta->hash[checksum % ZRAM_HASH_SIZE];
+
+	spin_lock(&hash->lock);
+	rb_node = hash->rb_root.rb_node;
+	while (rb_node) {
+		entry = rb_entry(rb_node, struct zram_entry, rb_node);
+		if (checksum == entry->checksum) {
+			entry->refcount++;
+			spin_unlock(&hash->lock);
+
+			if (zram_entry_match(zram, zstrm, entry, mem))
+				return entry;
+
+			zram_entry_put(meta, entry, true);
+
+			return NULL;
+		}
+
+		if (checksum < entry->checksum)
+			rb_node = rb_node->rb_left;
+		else
+			rb_node = rb_node->rb_right;
+	}
+	spin_unlock(&hash->lock);
+
+	return NULL;
+}
+
+static void zram_meta_init(struct zram_meta *meta)
+{
+	int i;
+	struct zram_hash *hash;
+
+	for (i = 0; i < ZRAM_HASH_SIZE; i++) {
+		hash = &meta->hash[i];
+		spin_lock_init(&hash->lock);
+		hash->rb_root = RB_ROOT;
+	}
+}
+
 static void zram_meta_free(struct zram_meta *meta)
 {
 	zs_destroy_pool(meta->mem_pool);
+	vfree(meta->hash);
 	vfree(meta->table);
 	kfree(meta);
 }
@@ -344,7 +482,7 @@ static void zram_meta_free(struct zram_meta *meta)
 static struct zram_meta *zram_meta_alloc(u64 disksize)
 {
 	size_t num_pages;
-	struct zram_meta *meta = kmalloc(sizeof(*meta), GFP_KERNEL);
+	struct zram_meta *meta = kzalloc(sizeof(*meta), GFP_KERNEL);
 	if (!meta)
 		goto out;
 
@@ -355,15 +493,23 @@ static struct zram_meta *zram_meta_alloc(u64 disksize)
 		goto free_meta;
 	}
 
+	meta->hash = vzalloc(ZRAM_HASH_SIZE * sizeof(struct zram_hash));
+	if (!meta->hash) {
+		pr_err("Error allocating zram entry hash\n");
+		goto free_table;
+	}
+
 	meta->mem_pool = zs_create_pool(GFP_NOIO | __GFP_HIGHMEM);
 	if (!meta->mem_pool) {
 		pr_err("Error creating memory pool\n");
 		goto free_table;
 	}
 
+	zram_meta_init(meta);
 	return meta;
 
 free_table:
+	vfree(meta->hash);
 	vfree(meta->table);
 free_meta:
 	kfree(meta);
@@ -432,7 +578,7 @@ static void zram_free_page(struct zram *zram, size_t index)
 		return;
 	}
 
-	zram_entry_free(meta, entry);
+	zram_entry_put(meta, entry, true);
 
 	atomic64_sub(zram_get_obj_size(meta, index),
 			&zram->stats.compr_data_size);
@@ -554,6 +700,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	struct zcomp_strm *zstrm;
 	bool locked = false;
 	unsigned long alloced_pages;
+	u32 checksum;
 
 	page = bvec->bv_page;
 	if (is_partial_io(bvec)) {
@@ -598,6 +745,15 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 		goto out;
 	}
 
+	checksum = zram_calc_checksum(uncmem);
+	entry = zram_entry_get(zram, zstrm, uncmem, checksum);
+	if (entry) {
+		if (!is_partial_io(bvec))
+			kunmap_atomic(user_mem);
+
+		goto found_duplication;
+	}
+
 	ret = zcomp_compress(zram->comp, zstrm, uncmem, &clen);
 	if (!is_partial_io(bvec)) {
 		kunmap_atomic(user_mem);
@@ -626,7 +782,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 
 	alloced_pages = zs_get_total_pages(meta->mem_pool);
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
-		zram_entry_free(meta, entry);
+		zram_entry_put(meta, entry, false);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -646,7 +802,9 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	zcomp_strm_release(zram->comp, zstrm);
 	locked = false;
 	zs_unmap_object(meta->mem_pool, entry->handle);
+	zram_entry_insert(zram, entry, checksum);
 
+found_duplication:
 	/*
 	 * Free memory associated with this sector
 	 * before overwriting unused sectors.
@@ -655,11 +813,11 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	zram_free_page(zram, index);
 
 	meta->table[index].entry = entry;
-	zram_set_obj_size(meta, index, clen);
+	zram_set_obj_size(meta, index, entry->len);
 	bit_spin_unlock(ZRAM_ACCESS, &meta->table[index].value);
 
 	/* Update stats */
-	atomic64_add(clen, &zram->stats.compr_data_size);
+	atomic64_add(entry->len, &zram->stats.compr_data_size);
 	atomic64_inc(&zram->stats.pages_stored);
 out:
 	if (locked)
@@ -753,7 +911,7 @@ static void zram_reset_device(struct zram *zram, bool reset_capacity)
 		if (!entry)
 			continue;
 
-		zram_entry_free(meta, entry);
+		zram_entry_put(meta, entry, true);
 	}
 
 	zcomp_destroy(zram->comp);
