@@ -315,9 +315,10 @@ static u32 zram_calc_checksum(unsigned char *mem)
 	return jhash(mem, PAGE_SIZE, 0);
 }
 
-static struct zram_entry *zram_entry_alloc(struct zram_meta *meta,
+static struct zram_entry *zram_entry_alloc(struct zram *zram,
 					unsigned int len)
 {
+	struct zram_meta *meta = zram->meta;
 	struct zram_entry *entry;
 
 	entry = kzalloc(sizeof(*entry), GFP_NOIO);
@@ -333,6 +334,7 @@ static struct zram_entry *zram_entry_alloc(struct zram_meta *meta,
 	RB_CLEAR_NODE(&entry->rb_node);
 	entry->refcount = 1;
 	entry->len = len;
+	atomic64_add(sizeof(*entry), &zram->stats.meta_data_size);
 
 	return entry;
 }
@@ -439,12 +441,19 @@ static struct zram_entry *zram_entry_get(struct zram *zram,
 		entry = rb_entry(rb_node, struct zram_entry, rb_node);
 		if (checksum == entry->checksum) {
 			entry->refcount++;
+			atomic64_add(entry->len, &zram->stats.dup_data_size);
 			spin_unlock(&hash->lock);
 
 			if (zram_entry_match(zram, zstrm, entry, mem))
 				return entry;
 
-			zram_entry_put(meta, entry, true);
+			if (zram_entry_put(meta, entry, true)) {
+				atomic64_sub(entry->len,
+					&zram->stats.dup_data_size);
+			} else {
+				atomic64_sub(sizeof(*entry),
+					&zram->stats.meta_data_size);
+			}
 
 			return NULL;
 		}
@@ -578,7 +587,10 @@ static void zram_free_page(struct zram *zram, size_t index)
 		return;
 	}
 
-	zram_entry_put(meta, entry, true);
+	if (zram_entry_put(meta, entry, true))
+		atomic64_sub(entry->len, &zram->stats.dup_data_size);
+	else
+		atomic64_sub(sizeof(*entry), &zram->stats.meta_data_size);
 
 	atomic64_sub(zram_get_obj_size(meta, index),
 			&zram->stats.compr_data_size);
@@ -772,7 +784,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 			src = uncmem;
 	}
 
-	entry = zram_entry_alloc(meta, clen);
+	entry = zram_entry_alloc(zram, clen);
 	if (!entry) {
 		pr_info("Error allocating memory for compressed page: %u, size=%zu\n",
 			index, clen);
@@ -783,6 +795,7 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 	alloced_pages = zs_get_total_pages(meta->mem_pool);
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
 		zram_entry_put(meta, entry, false);
+		atomic64_sub(sizeof(*entry), &zram->stats.meta_data_size);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -1156,6 +1169,8 @@ ZRAM_ATTR_RO(invalid_io);
 ZRAM_ATTR_RO(notify_free);
 ZRAM_ATTR_RO(zero_pages);
 ZRAM_ATTR_RO(compr_data_size);
+ZRAM_ATTR_RO(dup_data_size);
+ZRAM_ATTR_RO(meta_data_size);
 
 static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_disksize.attr,
@@ -1170,6 +1185,8 @@ static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_zero_pages.attr,
 	&dev_attr_orig_data_size.attr,
 	&dev_attr_compr_data_size.attr,
+	&dev_attr_dup_data_size.attr,
+	&dev_attr_meta_data_size.attr,
 	&dev_attr_mem_used_total.attr,
 	&dev_attr_mem_limit.attr,
 	&dev_attr_mem_used_max.attr,

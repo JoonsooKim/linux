@@ -102,6 +102,8 @@ struct zram_stats {
 	atomic64_t zero_pages;		/* no. of zero filled pages */
 	atomic64_t pages_stored;	/* no. of pages currently stored */
 	atomic_long_t max_used_pages;	/* no. of maximum pages stored */
+	atomic64_t dup_data_size;
+	atomic64_t meta_data_size;
 };
 
 struct zram_hash {
