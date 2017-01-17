@@ -230,7 +230,7 @@ static void describe_object_addr(struct kmem_cache *cache, void *object,
 		(void *)(object_addr + cache->object_size));
 }
 
-static void describe_object(struct kmem_cache *cache, void *object,
+void describe_object(struct kmem_cache *cache, void *object,
 				const void *addr)
 {
 	struct kasan_alloc_meta *alloc_info = get_alloc_info(cache, object);

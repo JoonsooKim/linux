@@ -54,7 +54,7 @@ void kasan_disable_current(void)
  * Poisons the shadow memory for 'size' bytes starting from 'addr'.
  * Memory addresses should be aligned to KASAN_SHADOW_SCALE_SIZE.
  */
-static void kasan_poison_shadow(const void *address, size_t size, u8 value)
+void kasan_poison_shadow(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 

@@ -99,6 +99,8 @@ static inline const void *kasan_shadow_to_mem(const void *shadow_addr)
 
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip);
+void describe_object(struct kmem_cache *cache, void *object,
+				const void *addr);
 void kasan_report_double_free(struct kmem_cache *cache, void *object,
 					void *ip);
 
