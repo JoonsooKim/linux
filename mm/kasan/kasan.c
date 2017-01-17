@@ -39,6 +39,7 @@
 
 #include "kasan.h"
 #include "../slab.h"
+#include "vchecker.h"
 
 void kasan_enable_current(void)
 {
@@ -255,6 +256,9 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 	}
 
 	if (likely(!memory_is_poisoned(addr, size)))
+		return;
+
+	if (vchecker_check(addr, size, write, ret_ip))
 		return;
 
 	kasan_report(addr, size, write, ret_ip);
@@ -511,9 +515,11 @@ bool kasan_slab_free(struct kmem_cache *cache, void *object)
 
 	shadow_byte = READ_ONCE(*(s8 *)kasan_mem_to_shadow(object));
 	if (shadow_byte < 0 || shadow_byte >= KASAN_SHADOW_SCALE_SIZE) {
-		kasan_report_double_free(cache, object,
+		if ((u8)shadow_byte != KASAN_VCHECKER_GRAYZONE) {
+			kasan_report_double_free(cache, object,
 				__builtin_return_address(1));
-		return true;
+			return true;
+		}
 	}
 
 	kasan_poison_slab_free(cache, object);
@@ -546,6 +552,7 @@ void kasan_kmalloc(struct kmem_cache *cache, const void *object, size_t size,
 	kasan_unpoison_shadow(object, size);
 	kasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start,
 		KASAN_KMALLOC_REDZONE);
+	vchecker_kmalloc(cache, object, size);
 
 	if (cache->flags & SLAB_KASAN)
 		set_track(&get_alloc_info(cache, object)->alloc_track, flags);

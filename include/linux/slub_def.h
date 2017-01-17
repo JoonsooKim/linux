@@ -134,6 +134,9 @@ struct kmem_cache {
 #ifdef CONFIG_KASAN
 	struct kasan_cache kasan_info;
 #endif
+#ifdef CONFIG_VCHECKER
+	struct vchecker_cache vchecker_cache;
+#endif
 
 	size_t useroffset;		/* Usercopy region offset */
 	size_t usersize;		/* Usercopy region size */

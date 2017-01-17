@@ -9,3 +9,4 @@ CFLAGS_REMOVE_kasan.o = -pg
 CFLAGS_kasan.o := $(call cc-option, -fno-conserve-stack -fno-stack-protector)
 
 obj-y := kasan.o report.o kasan_init.o quarantine.o
+obj-$(CONFIG_VCHECKER) += vchecker.o

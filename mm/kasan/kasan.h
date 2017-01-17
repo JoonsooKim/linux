@@ -13,6 +13,7 @@
 #define KASAN_KMALLOC_REDZONE   0xFC  /* redzone inside slub object */
 #define KASAN_KMALLOC_FREE      0xFB  /* object was freed (kmem_cache_free/kfree) */
 #define KASAN_GLOBAL_REDZONE    0xFA  /* redzone for global variable */
+#define KASAN_VCHECKER_GRAYZONE	0xF0  /* area that should be checked when access */
 
 /*
  * Stack redzone shadow values

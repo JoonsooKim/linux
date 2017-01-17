@@ -80,6 +80,9 @@ struct kmem_cache {
 #ifdef CONFIG_KASAN
 	struct kasan_cache kasan_info;
 #endif
+#ifdef CONFIG_VCHECKER
+	struct vchecker_cache vchecker_cache;
+#endif
 
 #ifdef CONFIG_SLAB_FREELIST_RANDOM
 	unsigned int *random_seq;

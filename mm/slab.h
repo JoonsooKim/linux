@@ -32,6 +32,8 @@ struct kmem_cache {
 
 #endif /* CONFIG_SLOB */
 
+#include "kasan/vchecker.h"
+
 #ifdef CONFIG_SLAB
 #include <linux/slab_def.h>
 #endif
@@ -529,5 +531,9 @@ static inline int cache_random_seq_create(struct kmem_cache *cachep,
 }
 static inline void cache_random_seq_destroy(struct kmem_cache *cachep) { }
 #endif /* CONFIG_SLAB_FREELIST_RANDOM */
+
+#ifdef CONFIG_VCHECKER
+void init_vcheckers(void);
+#endif
 
 #endif /* MM_SLAB_H */
