@@ -107,6 +107,9 @@ struct kmem_cache {
 #ifdef CONFIG_KASAN
 	struct kasan_cache kasan_info;
 #endif
+#ifdef CONFIG_VCHECKER
+	struct vchecker_cache vchecker_cache;
+#endif
 
 	struct kmem_cache_node *node[MAX_NUMNODES];
 };

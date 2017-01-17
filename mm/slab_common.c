@@ -24,6 +24,7 @@
 #include <trace/events/kmem.h>
 
 #include "slab.h"
+#include "kasan/vchecker.h"
 
 enum slab_state slab_state;
 LIST_HEAD(slab_caches);
@@ -344,6 +345,10 @@ static struct kmem_cache *create_cache(const char *name,
 	if (err)
 		goto out_free_cache;
 
+	err = init_vchecker(s);
+	if (err)
+		goto out_free_cache;
+
 	err = __kmem_cache_create(s, flags);
 	if (err)
 		goto out_free_cache;
@@ -356,6 +361,7 @@ out:
 	return s;
 
 out_free_cache:
+	fini_vchecker(s);
 	destroy_memcg_params(s);
 	kmem_cache_free(kmem_cache, s);
 	goto out;
@@ -728,6 +734,7 @@ void slab_kmem_cache_release(struct kmem_cache *s)
 {
 	__kmem_cache_release(s);
 	destroy_memcg_params(s);
+	fini_vchecker(s);
 	kfree_const(s->name);
 	kmem_cache_free(kmem_cache, s);
 }
@@ -1105,6 +1112,18 @@ void cache_random_seq_destroy(struct kmem_cache *cachep)
 	cachep->random_seq = NULL;
 }
 #endif /* CONFIG_SLAB_FREELIST_RANDOM */
+
+#ifdef CONFIG_VCHECKER
+void __init init_vcheckers(void)
+{
+	struct kmem_cache *s;
+
+	mutex_lock(&slab_mutex);
+	list_for_each_entry(s, &slab_caches, list)
+		init_vchecker(s);
+	mutex_unlock(&slab_mutex);
+}
+#endif
 
 #ifdef CONFIG_SLABINFO
 

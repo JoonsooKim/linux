@@ -53,4 +53,16 @@ config TEST_KASAN
 	  out of bounds accesses, use after free. It is useful for testing
 	  kernel debugging features like kernel address sanitizer.
 
+config VCHECKER
+	bool "Valid access checker"
+	help
+	  Enables valid access checker - runtime memory debugger,
+	  designed to find un-intended accesses to valid (allocated) area.
+	  To debug something, you need to specify concrete area to be
+	  debugged and register checker you'd like to check when access
+	  happens at the area.
+
+	depends on KASAN && DEBUG_FS
+	select KASAN_OUTLINE
+
 endif
