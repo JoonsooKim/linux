@@ -103,6 +103,7 @@ static inline bool kasan_report_enabled(void)
 
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip);
+void kasan_object_err(struct kmem_cache *cache, void *object);
 void kasan_report_double_free(struct kmem_cache *cache, void *object,
 			s8 shadow);
 

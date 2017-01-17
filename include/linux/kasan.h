@@ -41,6 +41,7 @@ static inline void kasan_disable_current(void)
 	current->kasan_depth--;
 }
 
+void kasan_poison_shadow(const void *address, size_t size, u8 value);
 void kasan_unpoison_shadow(const void *address, size_t size);
 
 void kasan_unpoison_task_stack(struct task_struct *task);

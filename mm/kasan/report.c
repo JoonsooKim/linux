@@ -154,7 +154,7 @@ static void print_track(struct kasan_track *track)
 	}
 }
 
-static void kasan_object_err(struct kmem_cache *cache, void *object)
+void kasan_object_err(struct kmem_cache *cache, void *object)
 {
 	struct kasan_alloc_meta *alloc_info = get_alloc_info(cache, object);
 
