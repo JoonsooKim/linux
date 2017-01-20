@@ -244,6 +244,7 @@ clean-files	+= oid_registry_data.c
 
 obj-$(CONFIG_UCS2_STRING) += ucs2_string.o
 obj-$(CONFIG_UBSAN) += ubsan.o
+obj-$(CONFIG_TEST_VCHECKER) += vchecker_test.o
 
 UBSAN_SANITIZE_ubsan.o := n
 

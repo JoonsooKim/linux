@@ -65,4 +65,13 @@ config VCHECKER
 	depends on KASAN && DEBUG_FS
 	select KALLSYMS
 
+config TEST_VCHECKER
+	tristate "Module for testing vchecker"
+	depends on m && KASAN
+	help
+	  This is a test module doing memory over-write. If vchecker is
+	  properly set up to check that over-write, memory over-written
+	  problem would be detected. See the help text in the
+	  lib/vchecker_test.c for vchecker sample run.
+
 endif
