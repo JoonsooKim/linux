@@ -41,8 +41,10 @@ struct vchecker_type {
 	int (*init)(struct kmem_cache *s, struct vchecker_cb *cb,
 			char *buf, size_t cnt);
 	void (*fini)(struct vchecker_cb *cb);
-	void (*show)(struct seq_file *f, struct vchecker_cb *cb);
-	bool (*check)(struct vchecker_cb *cb, void *object,
+	void (*show)(struct kmem_cache *s, struct seq_file *f,
+			struct vchecker_cb *cb, void *object);
+	bool (*check)(struct kmem_cache *s, struct vchecker_cb *cb,
+			void *object, bool write,
 			unsigned long begin, unsigned long end);
 };
 
@@ -76,7 +78,8 @@ static bool need_check(struct vchecker_cb *cb,
 	return true;
 }
 
-static void show_cb(struct seq_file *f, struct vchecker_cb *cb)
+static void show_cb(struct kmem_cache *s, struct seq_file *f,
+			struct vchecker_cb *cb, void *object)
 {
 	if (f) {
 		seq_printf(f, "0x%lx 0x%lx %s\n",
@@ -86,7 +89,7 @@ static void show_cb(struct seq_file *f, struct vchecker_cb *cb)
 			cb->begin, cb->end, cb->type->name);
 	}
 
-	cb->type->show(f, cb);
+	cb->type->show(s, f, cb, object);
 }
 
 static void add_cb(struct kmem_cache *s, struct vchecker_cb *cb)
@@ -161,7 +164,7 @@ static void vchecker_report(unsigned long addr, size_t size, bool write,
 	pr_err("%s of size %zu by task %s/%d\n",
 		write ? "Write" : "Read", size,
 		current->comm, task_pid_nr(current));
-	show_cb(NULL, cb);
+	show_cb(s, NULL, cb, object);
 
 	kasan_object_err(s, object);
 	pr_err("==================================================================\n");
@@ -241,7 +244,7 @@ bool vchecker_check(unsigned long addr, size_t size,
 			continue;
 
 		checked = true;
-		if (cb->type->check(cb, object, begin, end))
+		if (cb->type->check(s, cb, object, write, begin, end))
 			continue;
 
 		vchecker_report(addr, size, write, ret_ip, s, cb, object);
@@ -336,7 +339,7 @@ static int vchecker_type_show(struct seq_file *f, enum vchecker_type_num type)
 		if (cb->type != &vchecker_types[type])
 			continue;
 
-		show_cb(f, cb);
+		show_cb(s, f, cb, NULL);
 	}
 	mutex_unlock(&vchecker_meta);
 
@@ -353,7 +356,7 @@ static int enable_show(struct seq_file *f, void *v)
 
 	seq_printf(f, "%s\n", checker->enabled ? "1" : "0");
 	list_for_each_entry(cb, &checker->cb_list, list)
-		show_cb(f, cb);
+		show_cb(s, f, cb, NULL);
 
 	mutex_unlock(&vchecker_meta);
 
@@ -449,7 +452,8 @@ static void fini_value(struct vchecker_cb *cb)
 	kfree(cb->arg);
 }
 
-static void show_value(struct seq_file *f, struct vchecker_cb *cb)
+static void show_value(struct kmem_cache *s, struct seq_file *f,
+			struct vchecker_cb *cb, void *object)
 {
 	struct vchecker_value_arg *arg = cb->arg;
 
@@ -459,7 +463,8 @@ static void show_value(struct seq_file *f, struct vchecker_cb *cb)
 		pr_err("0x%llx %llu\n", arg->mask, arg->value);
 }
 
-static bool check_value(struct vchecker_cb *cb, void *object,
+static bool check_value(struct kmem_cache *s, struct vchecker_cb *cb,
+			void *object, bool write,
 			unsigned long begin, unsigned long end)
 {
 	struct vchecker_value_arg *arg;
