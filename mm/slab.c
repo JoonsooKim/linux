@@ -1418,7 +1418,15 @@ static struct page *kmem_getpages(struct kmem_cache *cachep, gfp_t flags,
 		return NULL;
 	}
 
+	if (kasan_slab_page_alloc(page_address(page),
+			PAGE_SIZE << cachep->gfporder, flags)) {
+		__free_pages(page, cachep->gfporder);
+		return NULL;
+	}
+
 	if (memcg_charge_slab(page, flags, cachep->gfporder, cachep)) {
+		kasan_slab_page_free(page_address(page),
+				PAGE_SIZE << cachep->gfporder);
 		__free_pages(page, cachep->gfporder);
 		return NULL;
 	}
@@ -1474,6 +1482,7 @@ static void kmem_freepages(struct kmem_cache *cachep, struct page *page)
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += nr_freed;
 	memcg_uncharge_slab(page, order, cachep);
+	kasan_slab_page_free(page_address(page), PAGE_SIZE << order);
 	__free_pages(page, order);
 }
 
