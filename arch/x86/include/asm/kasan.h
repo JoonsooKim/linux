@@ -15,6 +15,12 @@
 /* 47 bits for kernel address -> (47 - 3) bits for shadow */
 #define KASAN_SHADOW_END        (KASAN_SHADOW_START + (1ULL << (47 - 3)))
 
+#define HAVE_KASAN_PER_PAGE_SHADOW 1
+#define KASAN_PSHADOW_SIZE	((1ULL << (47 - PAGE_SHIFT)))
+#define KASAN_PSHADOW_START	(kasan_pshadow_offset + \
+					(0xffff800000000000ULL >> PAGE_SHIFT))
+#define KASAN_PSHADOW_END	(KASAN_PSHADOW_START + KASAN_PSHADOW_SIZE)
+
 #ifndef __ASSEMBLY__
 
 #ifdef CONFIG_KASAN
