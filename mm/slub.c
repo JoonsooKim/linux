@@ -1404,7 +1404,14 @@ static inline struct page *alloc_slab_page(struct kmem_cache *s,
 	else
 		page = __alloc_pages_node(node, flags, order);
 
+	if (kasan_slab_page_alloc(page ? page_address(page) : NULL,
+				PAGE_SIZE << order, flags)) {
+		__free_pages(page, order);
+		page = NULL;
+	}
+
 	if (page && memcg_charge_slab(page, flags, order, s)) {
+		kasan_slab_page_free(page_address(page), PAGE_SIZE << order);
 		__free_pages(page, order);
 		page = NULL;
 	}
@@ -1657,6 +1664,7 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += pages;
 	memcg_uncharge_slab(page, order, s);
+	kasan_slab_page_free(page_address(page), PAGE_SIZE << order);
 	__free_pages(page, order);
 }
 

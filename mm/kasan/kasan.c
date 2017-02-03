@@ -444,16 +444,31 @@ void *memcpy(void *dest, const void *src, size_t len)
 
 void kasan_alloc_pages(struct page *page, unsigned int order)
 {
-	if (likely(!PageHighMem(page)))
-		kasan_unpoison_shadow(page_address(page), PAGE_SIZE << order);
+	if (likely(!PageHighMem(page))) {
+		if (!kasan_pshadow_inited()) {
+			kasan_unpoison_shadow(page_address(page),
+					PAGE_SIZE << order);
+			return;
+		}
+
+		kasan_unpoison_pshadow(page_address(page), PAGE_SIZE << order);
+	}
 }
 
 void kasan_free_pages(struct page *page, unsigned int order)
 {
-	if (likely(!PageHighMem(page)))
-		kasan_poison_shadow(page_address(page),
-				PAGE_SIZE << order,
-				KASAN_FREE_PAGE);
+	if (likely(!PageHighMem(page))) {
+		if (!kasan_pshadow_inited()) {
+			kasan_poison_shadow(page_address(page),
+					PAGE_SIZE << order,
+					KASAN_FREE_PAGE);
+			return;
+		}
+
+		kasan_mark_pshadow(page_address(page),
+					PAGE_SIZE << order,
+					KASAN_PER_PAGE_FREE);
+	}
 }
 
 /*
@@ -688,19 +703,25 @@ void kasan_kmalloc(struct kmem_cache *cache, const void *object, size_t size,
 }
 EXPORT_SYMBOL(kasan_kmalloc);
 
-void kasan_kmalloc_large(const void *ptr, size_t size, gfp_t flags)
+int kasan_kmalloc_large(const void *ptr, size_t size, gfp_t flags)
 {
 	struct page *page;
 	unsigned long redzone_start;
 	unsigned long redzone_end;
+	int err;
 
 	if (gfpflags_allow_blocking(flags))
 		quarantine_reduce();
 
 	if (unlikely(ptr == NULL))
-		return;
+		return 0;
 
 	page = virt_to_page(ptr);
+	err = kasan_slab_page_alloc(ptr,
+		PAGE_SIZE << compound_order(page), flags);
+	if (err)
+		return err;
+
 	redzone_start = round_up((unsigned long)(ptr + size),
 				KASAN_SHADOW_SCALE_SIZE);
 	redzone_end = (unsigned long)ptr + (PAGE_SIZE << compound_order(page));
@@ -708,6 +729,8 @@ void kasan_kmalloc_large(const void *ptr, size_t size, gfp_t flags)
 	kasan_unpoison_shadow(ptr, size);
 	kasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start,
 		KASAN_PAGE_REDZONE);
+
+	return 0;
 }
 
 void kasan_krealloc(const void *object, size_t size, gfp_t flags)
@@ -746,6 +769,25 @@ void kasan_kfree_large(const void *ptr)
 			KASAN_FREE_PAGE);
 }
 
+int kasan_slab_page_alloc(const void *addr, size_t size, gfp_t flags)
+{
+	if (!kasan_pshadow_inited() || !addr)
+		return 0;
+
+	kasan_unpoison_shadow(addr, size);
+	kasan_poison_pshadow(addr, size);
+
+	return 0;
+}
+
+void kasan_slab_page_free(const void *addr, size_t size)
+{
+	if (!kasan_pshadow_inited() || !addr)
+		return;
+
+	kasan_poison_shadow(addr, size, KASAN_FREE_PAGE);
+}
+
 int kasan_module_alloc(void *addr, size_t size)
 {
 	void *ret;
@@ -778,6 +820,25 @@ void kasan_free_shadow(const struct vm_struct *vm)
 {
 	if (vm->flags & VM_KASAN)
 		vfree(kasan_mem_to_shadow(vm->addr));
+}
+
+int kasan_stack_alloc(const void *addr, size_t size)
+{
+	if (!kasan_pshadow_inited() || !addr)
+		return 0;
+
+	kasan_unpoison_shadow(addr, size);
+	kasan_poison_pshadow(addr, size);
+
+	return 0;
+}
+
+void kasan_stack_free(const void *addr, size_t size)
+{
+	if (!kasan_pshadow_inited() || !addr)
+		return;
+
+	kasan_poison_shadow(addr, size, KASAN_FREE_PAGE);
 }
 
 static void register_global(struct kasan_global *global)

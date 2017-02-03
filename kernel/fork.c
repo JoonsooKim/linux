@@ -207,6 +207,12 @@ static unsigned long *alloc_thread_stack_node(struct task_struct *tsk, int node)
 	struct page *page = alloc_pages_node(node, THREADINFO_GFP,
 					     THREAD_SIZE_ORDER);
 
+	if (kasan_stack_alloc(page ? page_address(page) : NULL,
+				PAGE_SIZE << THREAD_SIZE_ORDER)) {
+		__free_pages(page, THREAD_SIZE_ORDER);
+		page = NULL;
+	}
+
 	return page ? page_address(page) : NULL;
 #endif
 }
@@ -234,6 +240,7 @@ static inline void free_thread_stack(struct task_struct *tsk)
 	}
 #endif
 
+	kasan_stack_free(tsk->stack, PAGE_SIZE << THREAD_SIZE_ORDER);
 	__free_pages(virt_to_page(tsk->stack), THREAD_SIZE_ORDER);
 }
 # else
