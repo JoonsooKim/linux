@@ -20,6 +20,8 @@
 #include <asm/page.h>
 #include <asm/pgalloc.h>
 
+#include "kasan.h"
+
 /*
  * This page serves two purposes:
  *   - It used as early shadow memory. The entire shadow region populated
@@ -29,13 +31,22 @@
  */
 unsigned char kasan_zero_page[PAGE_SIZE] __page_aligned_bss;
 
+/*
+ * The shadow memory range that this page is mapped will be considered
+ * to be checked later by another shadow memory.
+ */
+unsigned char kasan_black_page[PAGE_SIZE] __page_aligned_bss;
+
 #if CONFIG_PGTABLE_LEVELS > 3
 pud_t kasan_zero_pud[PTRS_PER_PUD] __page_aligned_bss;
+pud_t kasan_black_pud[PTRS_PER_PUD] __page_aligned_bss;
 #endif
 #if CONFIG_PGTABLE_LEVELS > 2
 pmd_t kasan_zero_pmd[PTRS_PER_PMD] __page_aligned_bss;
+pmd_t kasan_black_pmd[PTRS_PER_PMD] __page_aligned_bss;
 #endif
 pte_t kasan_zero_pte[PTRS_PER_PTE] __page_aligned_bss;
+pte_t kasan_black_pte[PTRS_PER_PTE] __page_aligned_bss;
 
 static __init void *early_alloc(size_t size, int node)
 {
@@ -43,32 +54,36 @@ static __init void *early_alloc(size_t size, int node)
 					BOOTMEM_ALLOC_ACCESSIBLE, node);
 }
 
-static void __init zero_pte_populate(pmd_t *pmd, unsigned long addr,
-				unsigned long end)
+static void __init kasan_pte_populate(pmd_t *pmd, unsigned long addr,
+				unsigned long end, bool zero)
 {
-	pte_t *pte = pte_offset_kernel(pmd, addr);
-	pte_t zero_pte;
+	pte_t *ptep = pte_offset_kernel(pmd, addr);
+	pte_t pte;
+	unsigned char *page = zero ? kasan_zero_page : kasan_black_page;
 
-	zero_pte = pfn_pte(PFN_DOWN(__pa(kasan_zero_page)), PAGE_KERNEL);
-	zero_pte = pte_wrprotect(zero_pte);
+	pte = pfn_pte(PFN_DOWN(__pa(page)), PAGE_KERNEL);
+	pte = pte_wrprotect(pte);
 
 	while (addr + PAGE_SIZE <= end) {
-		set_pte_at(&init_mm, addr, pte, zero_pte);
+		set_pte_at(&init_mm, addr, ptep, pte);
 		addr += PAGE_SIZE;
-		pte = pte_offset_kernel(pmd, addr);
+		ptep = pte_offset_kernel(pmd, addr);
 	}
 
 	if (addr == end)
 		return;
 
 	/* Population for unaligned end address */
-	zero_pte = pfn_pte(PFN_DOWN(
-		__pa(early_alloc(PAGE_SIZE, NUMA_NO_NODE))), PAGE_KERNEL);
-	set_pte_at(&init_mm, addr, pte, zero_pte);
+	page = early_alloc(PAGE_SIZE, NUMA_NO_NODE);
+	if (!zero)
+		__memcpy(page, kasan_black_page, end - addr);
+
+	pte = pfn_pte(PFN_DOWN(__pa(page)), PAGE_KERNEL);
+	set_pte_at(&init_mm, addr, ptep, pte);
 }
 
-static void __init zero_pmd_populate(pud_t *pud, unsigned long addr,
-				unsigned long end)
+static void __init kasan_pmd_populate(pud_t *pud, unsigned long addr,
+				unsigned long end, bool zero, bool private)
 {
 	pmd_t *pmd = pmd_offset(pud, addr);
 	unsigned long next;
@@ -76,8 +91,10 @@ static void __init zero_pmd_populate(pud_t *pud, unsigned long addr,
 	do {
 		next = pmd_addr_end(addr, end);
 
-		if (IS_ALIGNED(addr, PMD_SIZE) && end - addr >= PMD_SIZE) {
-			pmd_populate_kernel(&init_mm, pmd, kasan_zero_pte);
+		if (IS_ALIGNED(addr, PMD_SIZE) && end - addr >= PMD_SIZE &&
+			!private) {
+			pmd_populate_kernel(&init_mm, pmd,
+				zero ? kasan_zero_pte : kasan_black_pte);
 			continue;
 		}
 
@@ -85,24 +102,28 @@ static void __init zero_pmd_populate(pud_t *pud, unsigned long addr,
 			pmd_populate_kernel(&init_mm, pmd,
 					early_alloc(PAGE_SIZE, NUMA_NO_NODE));
 		}
-		zero_pte_populate(pmd, addr, next);
+
+		kasan_pte_populate(pmd, addr, next, zero);
 	} while (pmd++, addr = next, addr != end);
 }
 
-static void __init zero_pud_populate(pgd_t *pgd, unsigned long addr,
-				unsigned long end)
+static void __init kasan_pud_populate(pgd_t *pgd, unsigned long addr,
+				unsigned long end, bool zero, bool private)
 {
 	pud_t *pud = pud_offset(pgd, addr);
 	unsigned long next;
 
 	do {
 		next = pud_addr_end(addr, end);
-		if (IS_ALIGNED(addr, PUD_SIZE) && end - addr >= PUD_SIZE) {
+		if (IS_ALIGNED(addr, PUD_SIZE) && end - addr >= PUD_SIZE &&
+			!private) {
 			pmd_t *pmd;
 
-			pud_populate(&init_mm, pud, kasan_zero_pmd);
+			pud_populate(&init_mm, pud,
+				zero ? kasan_zero_pmd : kasan_black_pmd);
 			pmd = pmd_offset(pud, addr);
-			pmd_populate_kernel(&init_mm, pmd, kasan_zero_pte);
+			pmd_populate_kernel(&init_mm, pmd,
+				zero ? kasan_zero_pte : kasan_black_pte);
 			continue;
 		}
 
@@ -110,18 +131,21 @@ static void __init zero_pud_populate(pgd_t *pgd, unsigned long addr,
 			pud_populate(&init_mm, pud,
 				early_alloc(PAGE_SIZE, NUMA_NO_NODE));
 		}
-		zero_pmd_populate(pud, addr, next);
+		kasan_pmd_populate(pud, addr, next, zero, private);
 	} while (pud++, addr = next, addr != end);
 }
 
 /**
- * kasan_populate_zero_shadow - populate shadow memory region with
- *                               kasan_zero_page
+ * kasan_populate_shadow - populate shadow memory region with
+ *                               kasan_(zero|black)_page
  * @shadow_start - start of the memory range to populate
  * @shadow_end   - end of the memory range to populate
+ * @zero	 - type of populated shadow, zero and black
+ * @private	 - force to populate private shadow except the last page
  */
-void __init kasan_populate_zero_shadow(const void *shadow_start,
-				const void *shadow_end)
+void __init kasan_populate_shadow(const void *shadow_start,
+				const void *shadow_end,
+				bool zero, bool private)
 {
 	unsigned long addr = (unsigned long)shadow_start;
 	unsigned long end = (unsigned long)shadow_end;
@@ -131,7 +155,8 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 	do {
 		next = pgd_addr_end(addr, end);
 
-		if (IS_ALIGNED(addr, PGDIR_SIZE) && end - addr >= PGDIR_SIZE) {
+		if (IS_ALIGNED(addr, PGDIR_SIZE) && end - addr >= PGDIR_SIZE &&
+			!private) {
 			pud_t *pud;
 			pmd_t *pmd;
 
@@ -143,11 +168,14 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 			 * puds,pmds, so pgd_populate(), pud_populate()
 			 * is noops.
 			 */
-			pgd_populate(&init_mm, pgd, kasan_zero_pud);
+			pgd_populate(&init_mm, pgd,
+				zero ? kasan_zero_pud : kasan_black_pud);
 			pud = pud_offset(pgd, addr);
-			pud_populate(&init_mm, pud, kasan_zero_pmd);
+			pud_populate(&init_mm, pud,
+				zero ? kasan_zero_pmd : kasan_black_pmd);
 			pmd = pmd_offset(pud, addr);
-			pmd_populate_kernel(&init_mm, pmd, kasan_zero_pte);
+			pmd_populate_kernel(&init_mm, pmd,
+				zero ? kasan_zero_pte : kasan_black_pte);
 			continue;
 		}
 
@@ -155,6 +183,6 @@ void __init kasan_populate_zero_shadow(const void *shadow_start,
 			pgd_populate(&init_mm, pgd,
 				early_alloc(PAGE_SIZE, NUMA_NO_NODE));
 		}
-		zero_pud_populate(pgd, addr, next);
+		kasan_pud_populate(pgd, addr, next, zero, private);
 	} while (pgd++, addr = next, addr != end);
 }

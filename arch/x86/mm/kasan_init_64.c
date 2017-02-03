@@ -99,8 +99,9 @@ void __init kasan_init(void)
 
 	clear_pgds(KASAN_SHADOW_START, KASAN_SHADOW_END);
 
-	kasan_populate_zero_shadow((void *)KASAN_SHADOW_START,
-			kasan_mem_to_shadow((void *)PAGE_OFFSET));
+	kasan_populate_shadow((void *)KASAN_SHADOW_START,
+			kasan_mem_to_shadow((void *)PAGE_OFFSET),
+			true, false);
 
 	for (i = 0; i < E820_X_MAX; i++) {
 		if (pfn_mapped[i].end == 0)
@@ -109,16 +110,18 @@ void __init kasan_init(void)
 		if (map_range(&pfn_mapped[i]))
 			panic("kasan: unable to allocate shadow!");
 	}
-	kasan_populate_zero_shadow(
+	kasan_populate_shadow(
 		kasan_mem_to_shadow((void *)PAGE_OFFSET + MAXMEM),
-		kasan_mem_to_shadow((void *)__START_KERNEL_map));
+		kasan_mem_to_shadow((void *)__START_KERNEL_map),
+		true, false);
 
 	vmemmap_populate((unsigned long)kasan_mem_to_shadow(_stext),
 			(unsigned long)kasan_mem_to_shadow(_end),
 			NUMA_NO_NODE);
 
-	kasan_populate_zero_shadow(kasan_mem_to_shadow((void *)MODULES_END),
-			(void *)KASAN_SHADOW_END);
+	kasan_populate_shadow(kasan_mem_to_shadow((void *)MODULES_END),
+			(void *)KASAN_SHADOW_END,
+			true, false);
 
 	load_cr3(init_level4_pgt);
 	__flush_tlb_all();
