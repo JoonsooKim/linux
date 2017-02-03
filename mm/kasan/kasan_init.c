@@ -57,6 +57,14 @@ static void __init zero_pte_populate(pmd_t *pmd, unsigned long addr,
 		addr += PAGE_SIZE;
 		pte = pte_offset_kernel(pmd, addr);
 	}
+
+	if (addr == end)
+		return;
+
+	/* Population for unaligned end address */
+	zero_pte = pfn_pte(PFN_DOWN(
+		__pa(early_alloc(PAGE_SIZE, NUMA_NO_NODE))), PAGE_KERNEL);
+	set_pte_at(&init_mm, addr, pte, zero_pte);
 }
 
 static void __init zero_pmd_populate(pud_t *pud, unsigned long addr,
