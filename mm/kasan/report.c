@@ -36,6 +36,26 @@
 #define SHADOW_BYTES_PER_ROW (SHADOW_BLOCKS_PER_ROW * SHADOW_BYTES_PER_BLOCK)
 #define SHADOW_ROWS_AROUND_ADDR 2
 
+static bool bad_in_pshadow(const void *addr, size_t size)
+{
+	u8 shadow_val;
+	const void *end = addr + size;
+
+	if (!kasan_pshadow_inited())
+		return false;
+
+	shadow_val = *(u8 *)kasan_mem_to_pshadow(addr);
+	if (shadow_val == KASAN_PER_PAGE_FREE)
+		return true;
+
+	for (; addr < end; addr += PAGE_SIZE) {
+		if (shadow_val != *(u8 *)kasan_mem_to_pshadow(addr))
+			return true;
+	}
+
+	return false;
+}
+
 static const void *find_first_bad_addr(const void *addr, size_t size)
 {
 	u8 shadow_val = *(u8 *)kasan_mem_to_shadow(addr);
@@ -53,6 +73,11 @@ static void print_error_description(struct kasan_access_info *info)
 	const char *bug_type = "unknown-crash";
 	u8 *shadow_addr;
 
+	if (bad_in_pshadow(info->access_addr, info->access_size)) {
+		info->first_bad_addr = NULL;
+		bug_type = "use-after-free";
+		goto out;
+	}
 	info->first_bad_addr = find_first_bad_addr(info->access_addr,
 						info->access_size);
 
@@ -95,6 +120,7 @@ static void print_error_description(struct kasan_access_info *info)
 		break;
 	}
 
+out:
 	pr_err("BUG: KASAN: %s in %pS at addr %p\n",
 		bug_type, (void *)info->ip,
 		info->access_addr);
@@ -228,6 +254,9 @@ static void print_shadow_for_address(const void *addr)
 	int i;
 	const void *shadow = kasan_mem_to_shadow(addr);
 	const void *shadow_row;
+
+	if (!addr)
+		return;
 
 	shadow_row = (void *)round_down((unsigned long)shadow,
 					SHADOW_BYTES_PER_ROW)

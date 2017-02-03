@@ -16,11 +16,14 @@
 #include <linux/kernel.h>
 #include <linux/memblock.h>
 #include <linux/pfn.h>
+#include <linux/vmalloc.h>
 
 #include <asm/page.h>
 #include <asm/pgalloc.h>
 
 #include "kasan.h"
+
+unsigned long kasan_pshadow_offset __read_mostly;
 
 /*
  * This page serves two purposes:
@@ -185,4 +188,32 @@ void __init kasan_populate_shadow(const void *shadow_start,
 		}
 		kasan_pud_populate(pgd, addr, next, zero, private);
 	} while (pgd++, addr = next, addr != end);
+}
+
+void __init kasan_early_init_pshadow(void)
+{
+	static struct vm_struct pshadow;
+	unsigned long kernel_offset;
+	int i;
+
+	/*
+	 * Temprorary map per-page shadow to per-byte shadow in order to
+	 * pass the KASAN checks in vm_area_register_early()
+	 */
+	kernel_offset = (unsigned long)kasan_shadow_to_mem(
+					(void *)KASAN_SHADOW_START);
+	kasan_pshadow_offset = KASAN_SHADOW_START -
+				(kernel_offset >> PAGE_SHIFT);
+
+	pshadow.size = KASAN_PSHADOW_SIZE;
+	pshadow.flags = VM_ALLOC | VM_NO_GUARD;
+	vm_area_register_early(&pshadow,
+		(PAGE_SIZE << KASAN_SHADOW_SCALE_SHIFT));
+
+	kasan_pshadow_offset = (unsigned long)pshadow.addr -
+					(kernel_offset >> PAGE_SHIFT);
+
+	BUILD_BUG_ON(KASAN_FREE_PAGE != KASAN_PER_PAGE_BYPASS);
+	for (i = 0; i < PAGE_SIZE; i++)
+		kasan_black_page[i] = KASAN_FREE_PAGE;
 }

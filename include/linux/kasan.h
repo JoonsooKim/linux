@@ -15,6 +15,18 @@ struct vm_struct;
 #include <asm/kasan.h>
 #include <asm/pgtable.h>
 
+#ifndef KASAN_PSHADOW_SIZE
+#define KASAN_PSHADOW_SIZE 0
+#endif
+#ifndef KASAN_PSHADOW_START
+#define KASAN_PSHADOW_START 0
+#endif
+#ifndef KASAN_PSHADOW_END
+#define KASAN_PSHADOW_END 0
+#endif
+
+extern unsigned long kasan_pshadow_offset;
+
 extern unsigned char kasan_zero_page[PAGE_SIZE];
 extern pte_t kasan_zero_pte[PTRS_PER_PTE];
 extern pmd_t kasan_zero_pmd[PTRS_PER_PMD];
@@ -28,11 +40,36 @@ extern pud_t kasan_black_pud[PTRS_PER_PUD];
 void kasan_populate_shadow(const void *shadow_start,
 				const void *shadow_end,
 				bool zero, bool private);
+void kasan_early_init_pshadow(void);
+
+static inline const void *kasan_shadow_to_mem(const void *shadow_addr)
+{
+	return (void *)(((unsigned long)shadow_addr - KASAN_SHADOW_OFFSET)
+		<< KASAN_SHADOW_SCALE_SHIFT);
+}
 
 static inline void *kasan_mem_to_shadow(const void *addr)
 {
 	return (void *)((unsigned long)addr >> KASAN_SHADOW_SCALE_SHIFT)
 		+ KASAN_SHADOW_OFFSET;
+}
+
+static inline void *kasan_mem_to_pshadow(const void *addr)
+{
+	return (void *)((unsigned long)addr >> PAGE_SHIFT)
+		+ kasan_pshadow_offset;
+}
+
+static inline void *kasan_shadow_to_pshadow(const void *addr)
+{
+	/*
+	 * KASAN_SHADOW_END needs special handling since
+	 * it will overflow in kasan_shadow_to_mem()
+	 */
+	if ((unsigned long)addr == KASAN_SHADOW_END)
+		return (void *)KASAN_PSHADOW_END;
+
+	return kasan_mem_to_pshadow(kasan_shadow_to_mem(addr));
 }
 
 /* Enable reporting bugs after kasan_disable_current() */
@@ -48,6 +85,8 @@ static inline void kasan_disable_current(void)
 }
 
 void kasan_unpoison_shadow(const void *address, size_t size);
+void kasan_poison_pshadow(const void *address, size_t size);
+void kasan_unpoison_pshadow(const void *address, size_t size);
 
 void kasan_unpoison_task_stack(struct task_struct *task);
 void kasan_unpoison_stack_above_sp_to(const void *watermark);
@@ -90,6 +129,8 @@ size_t kasan_metadata_size(struct kmem_cache *cache);
 #else /* CONFIG_KASAN */
 
 static inline void kasan_unpoison_shadow(const void *address, size_t size) {}
+static inline void kasan_poison_pshadow(const void *address, size_t size) {}
+static inline void kasan_unpoison_pshadow(const void *address, size_t size) {}
 
 static inline void kasan_unpoison_task_stack(struct task_struct *task) {}
 static inline void kasan_unpoison_stack_above_sp_to(const void *watermark) {}

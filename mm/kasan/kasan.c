@@ -105,6 +105,30 @@ void kasan_unpoison_stack_above_sp_to(const void *watermark)
 	kasan_unpoison_shadow(sp, size);
 }
 
+static void kasan_mark_pshadow(const void *address, size_t size, u8 value)
+{
+	void *pshadow_start;
+	void *pshadow_end;
+
+	if (!kasan_pshadow_inited())
+		return;
+
+	pshadow_start = kasan_mem_to_pshadow(address);
+	pshadow_end =  kasan_mem_to_pshadow(address + size);
+
+	memset(pshadow_start, value, pshadow_end - pshadow_start);
+}
+
+void kasan_poison_pshadow(const void *address, size_t size)
+{
+	kasan_mark_pshadow(address, size, KASAN_PER_PAGE_BYPASS);
+}
+
+void kasan_unpoison_pshadow(const void *address, size_t size)
+{
+	kasan_mark_pshadow(address, size, 0);
+}
+
 /*
  * All functions below always inlined so compiler could
  * perform better optimizations in each of __asan_loadX/__assn_storeX
@@ -258,8 +282,82 @@ static __always_inline bool memory_is_poisoned_n(unsigned long addr,
 	return false;
 }
 
+static __always_inline u8 pshadow_val_builtin(unsigned long addr, size_t size)
+{
+	u8 shadow_val = *(u8 *)kasan_mem_to_pshadow((void *)addr);
+
+	if (shadow_val == KASAN_PER_PAGE_FREE)
+		return shadow_val;
+
+	if (likely(((addr + size - 1) & PAGE_MASK) >= (size - 1)))
+		return shadow_val;
+
+	if (shadow_val != *(u8 *)kasan_mem_to_pshadow((void *)addr + size - 1))
+		return KASAN_PER_PAGE_FREE;
+
+	return shadow_val;
+}
+
+static __always_inline u8 pshadow_val_n(unsigned long addr, size_t size)
+{
+	u8 *start, *end;
+	u8 shadow_val;
+
+	start = kasan_mem_to_pshadow((void *)addr);
+	end = kasan_mem_to_pshadow((void *)addr + size - 1);
+	size = end - start + 1;
+
+	shadow_val = *start;
+	if (shadow_val == KASAN_PER_PAGE_FREE)
+		return shadow_val;
+
+	while (size) {
+		/*
+		 * Different shadow value means that access is over
+		 * the boundary. Report the error even if it is
+		 * in the valid area.
+		 */
+		if (shadow_val != *start)
+			return KASAN_PER_PAGE_FREE;
+
+		start++;
+		size--;
+	}
+
+	return shadow_val;
+}
+
+static __always_inline u8 pshadow_val(unsigned long addr, size_t size)
+{
+	if (!kasan_pshadow_inited())
+		return KASAN_PER_PAGE_BYPASS;
+
+	if (__builtin_constant_p(size)) {
+		switch (size) {
+		case 1:
+		case 2:
+		case 4:
+		case 8:
+		case 16:
+			return pshadow_val_builtin(addr, size);
+		default:
+			BUILD_BUG();
+		}
+	}
+
+	return pshadow_val_n(addr, size);
+}
+
 static __always_inline bool memory_is_poisoned(unsigned long addr, size_t size)
 {
+	u8 shadow_val = pshadow_val(addr, size);
+
+	if (!shadow_val)
+		return false;
+
+	if (shadow_val != KASAN_PER_PAGE_BYPASS)
+		return true;
+
 	if (__builtin_constant_p(size)) {
 		switch (size) {
 		case 1:

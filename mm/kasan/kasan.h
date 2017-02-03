@@ -13,6 +13,9 @@
 #define KASAN_KMALLOC_FREE      0xFB  /* object was freed (kmem_cache_free/kfree) */
 #define KASAN_GLOBAL_REDZONE    0xFA  /* redzone for global variable */
 
+#define KASAN_PER_PAGE_BYPASS	0xFF  /* page should be checked by per-byte shadow */
+#define KASAN_PER_PAGE_FREE	0xFE  /* page was freed */
+
 /*
  * Stack redzone shadow values
  * (Those are compiler's ABI, don't change them)
@@ -90,10 +93,13 @@ struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,
 struct kasan_free_meta *get_free_info(struct kmem_cache *cache,
 					const void *object);
 
-static inline const void *kasan_shadow_to_mem(const void *shadow_addr)
+static inline bool kasan_pshadow_inited(void)
 {
-	return (void *)(((unsigned long)shadow_addr - KASAN_SHADOW_OFFSET)
-		<< KASAN_SHADOW_SCALE_SHIFT);
+#ifdef HAVE_KASAN_PER_PAGE_SHADOW
+	return true;
+#else
+	return false;
+#endif
 }
 
 static inline bool kasan_report_enabled(void)
