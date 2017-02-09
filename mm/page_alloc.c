@@ -791,6 +791,12 @@ static inline void __free_one_page(struct page *page,
 
 	max_order = min_t(unsigned int, MAX_ORDER, pageblock_order + 1);
 
+#ifdef CONFIG_KASAN
+	/* Suppress merging at initial attempt to unmap shadow memory */
+	max_order = min_t(unsigned int,
+			KASAN_SHADOW_SCALE_SHIFT + 1, max_order);
+#endif
+
 	VM_BUG_ON(!zone_is_initialized(zone));
 	VM_BUG_ON_PAGE(page->flags & PAGE_FLAGS_CHECK_AT_PREP, page);
 
@@ -826,6 +832,10 @@ continue_merging:
 		pfn = combined_pfn;
 		order++;
 	}
+
+	if (unlikely(kasan_free_buddy(page, order, max_order)))
+		return;
+
 	if (max_order < MAX_ORDER) {
 		/* If we are here, it means order is >= pageblock_order.
 		 * We want to prevent merge between freepages on isolate

@@ -91,6 +91,8 @@ int kasan_stack_alloc(const void *address, size_t size);
 void kasan_stack_free(const void *addr, size_t size);
 int kasan_slab_page_alloc(const void *address, size_t size, gfp_t flags);
 void kasan_slab_page_free(const void *addr, size_t size);
+bool kasan_free_buddy(struct page *page, unsigned int order,
+			unsigned int max_order);
 
 void kasan_unpoison_task_stack(struct task_struct *task);
 void kasan_unpoison_stack_above_sp_to(const void *watermark);
@@ -141,6 +143,8 @@ static inline void kasan_stack_free(const void *addr, size_t size) {}
 static inline int kasan_slab_page_alloc(const void *address, size_t size,
 					gfp_t flags) { return 0; }
 static inline void kasan_slab_page_free(const void *addr, size_t size) {}
+static inline bool kasan_free_buddy(struct page *page, unsigned int order,
+			unsigned int max_order) { return false; }
 
 static inline void kasan_unpoison_task_stack(struct task_struct *task) {}
 static inline void kasan_unpoison_stack_above_sp_to(const void *watermark) {}

@@ -35,13 +35,18 @@
 #include <linux/types.h>
 #include <linux/vmalloc.h>
 #include <linux/bug.h>
+#include <linux/page-isolation.h>
 #include <asm/cacheflush.h>
+#include <asm/tlbflush.h>
 
 #include "kasan.h"
 #include "../slab.h"
 #include "../internal.h"
 
 static DEFINE_SPINLOCK(shadow_lock);
+static LIST_HEAD(unmap_list);
+static void kasan_unmap_shadow_workfn(struct work_struct *work);
+static DECLARE_WORK(kasan_unmap_shadow_work, kasan_unmap_shadow_workfn);
 
 /*
  * Poisons the shadow memory for 'size' bytes starting from 'addr'.
@@ -227,6 +232,122 @@ static int kasan_map_shadow(const void *addr, size_t size, gfp_t flags)
 		pr_err("mapping shadow entry is failed");
 
 	return err;
+}
+
+static int kasan_unmap_shadow_pte(pte_t *ptep, pgtable_t token,
+			unsigned long addr, void *data)
+{
+	pte_t pte;
+	struct page *page;
+	struct list_head *list = data;
+
+	if (kasan_black_shadow(ptep))
+		return 0;
+
+	pte = *ptep;
+	page = pfn_to_page(pte_pfn(pte));
+	list_add(&page->lru, list);
+
+	pte = pfn_pte(PFN_DOWN(__pa(kasan_black_page)), PAGE_KERNEL);
+	pte = pte_wrprotect(pte);
+	set_pte_at(&init_mm, addr, ptep, pte);
+
+	return 0;
+}
+
+static void kasan_unmap_shadow_workfn(struct work_struct *work)
+{
+	struct page *page, *next;
+	LIST_HEAD(list);
+	LIST_HEAD(shadow_list);
+	unsigned long flags;
+	unsigned int order;
+	unsigned long shadow_addr, shadow_size;
+	unsigned long tlb_start = ULONG_MAX, tlb_end = 0;
+	int err;
+
+	spin_lock_irqsave(&shadow_lock, flags);
+	list_splice_init(&unmap_list, &list);
+	spin_unlock_irqrestore(&shadow_lock, flags);
+
+	if (list_empty(&list))
+		return;
+
+	list_for_each_entry_safe(page, next, &list, lru) {
+		order = page_private(page);
+		post_alloc_hook(page, order, GFP_NOWAIT);
+		set_page_private(page, order);
+
+		shadow_addr = (unsigned long)kasan_mem_to_shadow(
+						page_address(page));
+		shadow_size = PAGE_SIZE << (order - KASAN_SHADOW_SCALE_SHIFT);
+
+		tlb_start = min(shadow_addr, tlb_start);
+		tlb_end = max(shadow_addr + shadow_size, tlb_end);
+
+		flush_cache_vunmap(shadow_addr, shadow_addr + shadow_size);
+		err = apply_to_page_range(&init_mm, shadow_addr, shadow_size,
+				kasan_unmap_shadow_pte, &shadow_list);
+		if (err) {
+			pr_err("invalid shadow entry is found");
+			list_del(&page->lru);
+		}
+	}
+	flush_tlb_kernel_range(tlb_start, tlb_end);
+
+	list_for_each_entry_safe(page, next, &list, lru) {
+		list_del(&page->lru);
+		__free_pages(page, page_private(page));
+	}
+	list_for_each_entry_safe(page, next, &shadow_list, lru) {
+		list_del(&page->lru);
+		__free_page(page);
+	}
+}
+
+static bool kasan_unmap_shadow(struct page *page, unsigned int order,
+			unsigned int max_order)
+{
+	int err;
+	unsigned long shadow_addr, shadow_size;
+	unsigned long count = 0;
+	LIST_HEAD(list);
+	unsigned long flags;
+	struct zone *zone;
+	int mt;
+
+	if (order < KASAN_SHADOW_SCALE_SHIFT)
+		return false;
+
+	if (max_order != (KASAN_SHADOW_SCALE_SHIFT + 1))
+		return false;
+
+	shadow_addr = (unsigned long)kasan_mem_to_shadow(page_address(page));
+	shadow_size = PAGE_SIZE << (order - KASAN_SHADOW_SCALE_SHIFT);
+	err = apply_to_page_range(&init_mm, shadow_addr, shadow_size,
+				kasan_exist_shadow_pte, &count);
+	if (err) {
+		pr_err("checking shadow entry is failed");
+		return false;
+	}
+
+	if (!count)
+		return false;
+
+	zone = page_zone(page);
+	mt = get_pageblock_migratetype(page);
+	if (!is_migrate_isolate(mt))
+		__mod_zone_freepage_state(zone, -(1UL << order), mt);
+
+	set_page_private(page, order);
+
+	spin_lock_irqsave(&shadow_lock, flags);
+	list_add(&page->lru, &unmap_list);
+	spin_unlock_irqrestore(&shadow_lock, flags);
+
+	schedule_work(&kasan_unmap_shadow_work);
+
+	return true;
 }
 
 /*
@@ -587,6 +708,15 @@ void kasan_free_pages(struct page *page, unsigned int order)
 					PAGE_SIZE << order,
 					KASAN_PER_PAGE_FREE);
 	}
+}
+
+bool kasan_free_buddy(struct page *page, unsigned int order,
+			unsigned int max_order)
+{
+	if (!kasan_pshadow_inited())
+		return false;
+
+	return kasan_unmap_shadow(page, order, max_order);
 }
 
 /*
