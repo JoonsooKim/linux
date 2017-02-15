@@ -207,3 +207,13 @@ void __init kasan_init(void)
 	init_task.kasan_depth = 0;
 	pr_info("KernelAddressSanitizer initialized\n");
 }
+
+void arch_kasan_map_shadow(unsigned long s, unsigned long e)
+{
+	return;
+}
+
+bool arch_kasan_recheck_prepare(unsigned long addr, size_t size)
+{
+	return false;
+}

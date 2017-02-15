@@ -35,9 +35,13 @@
 #include <linux/types.h>
 #include <linux/vmalloc.h>
 #include <linux/bug.h>
+#include <asm/cacheflush.h>
 
 #include "kasan.h"
 #include "../slab.h"
+#include "../internal.h"
+
+static DEFINE_SPINLOCK(shadow_lock);
 
 /*
  * Poisons the shadow memory for 'size' bytes starting from 'addr'.
@@ -127,6 +131,102 @@ void kasan_poison_pshadow(const void *address, size_t size)
 void kasan_unpoison_pshadow(const void *address, size_t size)
 {
 	kasan_mark_pshadow(address, size, 0);
+}
+
+static bool kasan_black_shadow(pte_t *ptep)
+{
+	pte_t pte = *ptep;
+
+	if (pte_none(pte))
+		return true;
+
+	if (pte_pfn(pte) == kasan_black_page_pfn)
+		return true;
+
+	return false;
+}
+
+static int kasan_exist_shadow_pte(pte_t *ptep, pgtable_t token,
+			unsigned long addr, void *data)
+{
+	unsigned long *count = data;
+
+	if (kasan_black_shadow(ptep))
+		return 0;
+
+	(*count)++;
+	return 0;
+}
+
+static int kasan_map_shadow_pte(pte_t *ptep, pgtable_t token,
+			unsigned long addr, void *data)
+{
+	pte_t pte;
+	gfp_t gfp_flags = *(gfp_t *)data;
+	struct page *page;
+	unsigned long flags;
+
+	if (!kasan_black_shadow(ptep))
+		return 0;
+
+	page = alloc_page(gfp_flags);
+	if (!page)
+		return -ENOMEM;
+
+	__memcpy(page_address(page), kasan_black_page, PAGE_SIZE);
+
+	spin_lock_irqsave(&shadow_lock, flags);
+	if (!kasan_black_shadow(ptep))
+		goto out;
+
+	pte = mk_pte(page, PAGE_KERNEL);
+	set_pte_at(&init_mm, addr, ptep, pte);
+	page = NULL;
+
+out:
+	spin_unlock_irqrestore(&shadow_lock, flags);
+	if (page)
+		__free_page(page);
+
+	return 0;
+}
+
+static int kasan_map_shadow(const void *addr, size_t size, gfp_t flags)
+{
+	int err;
+	unsigned long shadow_start, shadow_end;
+	unsigned long count = 0;
+
+	if (!kasan_pshadow_inited())
+		return 0;
+
+	flags = flags & GFP_RECLAIM_MASK;
+	shadow_start = (unsigned long)kasan_mem_to_shadow(addr);
+	shadow_end = (unsigned long)kasan_mem_to_shadow(addr + size);
+	shadow_start = round_down(shadow_start, PAGE_SIZE);
+	shadow_end = ALIGN(shadow_end, PAGE_SIZE);
+
+	err = apply_to_page_range(&init_mm, shadow_start,
+				shadow_end - shadow_start,
+				kasan_exist_shadow_pte, &count);
+	if (err) {
+		pr_err("checking shadow entry is failed");
+		return err;
+	}
+
+	if (count == (shadow_end - shadow_start) / PAGE_SIZE)
+		return err;
+
+	err = apply_to_page_range(&init_mm, shadow_start,
+		shadow_end - shadow_start,
+		kasan_map_shadow_pte, (void *)&flags);
+
+	arch_kasan_map_shadow(shadow_start, shadow_end);
+	flush_cache_vmap(shadow_start, shadow_end);
+	if (err)
+		pr_err("mapping shadow entry is failed");
+
+	return err;
 }
 
 /*
@@ -378,6 +478,24 @@ static __always_inline bool memory_is_poisoned(unsigned long addr, size_t size)
 	return memory_is_poisoned_n(addr, size);
 }
 
+static noinline void check_memory_region_slow(unsigned long addr,
+				size_t size, bool write,
+				unsigned long ret_ip)
+{
+	preempt_disable();
+	if (!arch_kasan_recheck_prepare(addr, size))
+		goto report;
+
+	if (!memory_is_poisoned(addr, size)) {
+		preempt_enable();
+		return;
+	}
+
+report:
+	preempt_enable();
+	kasan_report(addr, size, write, ret_ip);
+}
+
 static __always_inline void check_memory_region_inline(unsigned long addr,
 						size_t size, bool write,
 						unsigned long ret_ip)
@@ -394,7 +512,7 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 	if (likely(!memory_is_poisoned(addr, size)))
 		return;
 
-	kasan_report(addr, size, write, ret_ip);
+	check_memory_region_slow(addr, size, write, ret_ip);
 }
 
 static void check_memory_region(unsigned long addr,
@@ -771,8 +889,14 @@ void kasan_kfree_large(const void *ptr)
 
 int kasan_slab_page_alloc(const void *addr, size_t size, gfp_t flags)
 {
+	int err;
+
 	if (!kasan_pshadow_inited() || !addr)
 		return 0;
+
+	err = kasan_map_shadow(addr, size, flags);
+	if (err)
+		return err;
 
 	kasan_unpoison_shadow(addr, size);
 	kasan_poison_pshadow(addr, size);
@@ -824,8 +948,14 @@ void kasan_free_shadow(const struct vm_struct *vm)
 
 int kasan_stack_alloc(const void *addr, size_t size)
 {
+	int err;
+
 	if (!kasan_pshadow_inited() || !addr)
 		return 0;
+
+	err = kasan_map_shadow(addr, size, THREADINFO_GFP);
+	if (err)
+		return err;
 
 	kasan_unpoison_shadow(addr, size);
 	kasan_poison_pshadow(addr, size);

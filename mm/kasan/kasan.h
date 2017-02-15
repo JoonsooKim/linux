@@ -88,19 +88,25 @@ struct kasan_free_meta {
 	struct qlist_node quarantine_link;
 };
 
+extern unsigned long kasan_black_page_pfn;
+
 struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,
 					const void *object);
 struct kasan_free_meta *get_free_info(struct kmem_cache *cache,
 					const void *object);
 
-static inline bool kasan_pshadow_inited(void)
-{
 #ifdef HAVE_KASAN_PER_PAGE_SHADOW
-	return true;
+void arch_kasan_map_shadow(unsigned long s, unsigned long e);
+bool arch_kasan_recheck_prepare(unsigned long addr, size_t size);
+
+static inline bool kasan_pshadow_inited(void) {	return true; }
+
 #else
-	return false;
+static inline void arch_kasan_map_shadow(unsigned long s, unsigned long e) { }
+static inline bool arch_kasan_recheck_prepare(unsigned long addr,
+					size_t size) { return false; }
+static inline bool kasan_pshadow_inited(void) {	return false; }
 #endif
-}
 
 static inline bool kasan_report_enabled(void)
 {
