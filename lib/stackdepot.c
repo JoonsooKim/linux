@@ -130,8 +130,11 @@ static struct stack_record *depot_alloc_stack(unsigned long *entries, int size,
 			smp_store_release(&next_slab_inited, 0);
 	}
 	init_stack_slab(prealloc);
-	if (stack_slabs[depot_index] == NULL)
+	if (stack_slabs[depot_index] == NULL) {
+		if (!(alloc_flags & __GFP_NOWARN))
+			WARN_ONCE(1, "Stack depot failed to allocate stack_slabs");
 		return NULL;
+	}
 
 	stack = stack_slabs[depot_index] + depot_offset;
 
@@ -198,11 +201,12 @@ EXPORT_SYMBOL_GPL(depot_fetch_stack);
  * depot_save_stack - save stack in a stack depot.
  * @trace - the stacktrace to save.
  * @alloc_flags - flags for allocating additional memory if required.
+ * @is_new - set #true when @trace was not in the stack depot.
  *
  * Returns the handle of the stack struct stored in depot.
  */
 depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
-				    gfp_t alloc_flags)
+				      gfp_t alloc_flags, bool *is_new)
 {
 	u32 hash;
 	depot_stack_handle_t retval = 0;
@@ -236,6 +240,8 @@ depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 	 * |next_slab_inited| in depot_alloc_stack() and init_stack_slab().
 	 */
 	if (unlikely(!smp_load_acquire(&next_slab_inited))) {
+		gfp_t orig_flags = alloc_flags;
+
 		/*
 		 * Zero out zone modifiers, as we don't have specific zone
 		 * requirements. Keep the flags related to allocation in atomic
@@ -247,6 +253,9 @@ depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 		page = alloc_pages(alloc_flags, STACK_ALLOC_ORDER);
 		if (page)
 			prealloc = page_address(page);
+
+		/* restore flags to report failure in depot_alloc_stack() */
+		alloc_flags = orig_flags;
 	}
 
 	spin_lock_irqsave(&depot_lock, flags);
@@ -264,6 +273,8 @@ depot_stack_handle_t depot_save_stack(struct stack_trace *trace,
 			 */
 			smp_store_release(bucket, new);
 			found = new;
+			if (is_new)
+				*is_new = true;
 		}
 	} else if (prealloc) {
 		/*
