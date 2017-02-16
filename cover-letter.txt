@@ -1,0 +1,61 @@
+mm/kasan: support per-page shadow memory
+
+1. What is per-page shadow memory
+
+This patch introduces infrastructure to support per-page shadow memory.
+Per-page shadow memory is the same with original shadow memory except
+the granualarity. It's one byte shows the shadow value for the page.
+The purpose of introducing this new shadow memory is to save memory
+consumption.
+
+2. Problem of current approach
+
+Until now, KASAN needs shadow memory for all the range of the memory
+so the amount of statically allocated memory is so large. It causes
+the problem that KASAN cannot run on the system with hard memory
+constraint. Even if KASAN can run, large memory consumption due to
+KASAN changes behaviour of the workload so we cannot validate
+the moment that we want to check.
+
+3. How does this patch fix the problem
+
+This patch tries to fix the problem by reducing memory consumption for
+the shadow memory. There are two observations.
+
+1) Type of memory usage can be distinguished well.
+2) Shadow memory is manipulated/checked in byte unit only for slab,
+kernel stack and global variable. Shadow memory for other usecases
+just show KASAN_FREE_PAGE or 0 (means valid) in page unit.
+
+With these two observations, I think an optimized way to support
+KASAN feature.
+
+1) Introduces per-page shadow that cover all the memory
+2) Checks validity of the access through per-page
+3) Checks validity of the access through original shadow if
+per-page shadow value shows that there is original shadow for this range
+4) Allocates/maps specific range of the original shadow on-demand
+
+Instead original shadow statically consumes 1/8 bytes of the amount of
+total memory, per-page shadow statically consumes 1/PAGE_SIZE bytes of it.
+This new approach will consume some more bytes for on-demand shadow memory
+in runtime, but, roughly, it would not be larger than before.
+
+4. Result
+
+Following is the result of the memory consumption
+on my 1024 MB QEMU system. runtime shows the maximum memory usage during
+the kernel build workload.
+
+base vs patched
+
+MemTotal: 858 MB vs 987 MB
+runtime: 0 MB vs 30MB
+
+For 4096 MB QEMU system
+
+MemTotal: 3477 MB vs 4000 MB
+runtime: 0 MB vs 50MB
+
+base vs patched (2048 MB QEMU system)
+204 s vs 224 s
