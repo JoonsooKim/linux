@@ -355,6 +355,10 @@ DECLARE_INIT_PER_CPU(irq_stack_union);
 
 DECLARE_PER_CPU(char *, irq_stack_ptr);
 DECLARE_PER_CPU(unsigned int, irq_count);
+
+#define EXCEPTION_STKSZ_TOTAL ((N_EXCEPTION_STACKS - 1) * EXCEPTION_STKSZ + DEBUG_STKSZ)
+DECLARE_PER_CPU(char, exception_stacks[EXCEPTION_STKSZ_TOTAL]);
+
 extern asmlinkage void ignore_sysret(void);
 #else	/* X86_64 */
 #ifdef CONFIG_CC_STACKPROTECTOR

@@ -21,6 +21,7 @@
 #include <asm/cpumask.h>
 #include <asm/cpu.h>
 #include <asm/stackprotector.h>
+#include <asm/kasan.h>
 
 DEFINE_PER_CPU_READ_MOSTLY(int, cpu_number);
 EXPORT_PER_CPU_SYMBOL(cpu_number);
@@ -288,4 +289,6 @@ void __init setup_per_cpu_areas(void)
 
 	/* Setup cpu initialized, callin, callout masks */
 	setup_cpu_local_masks();
+
+	kasan_init_late();
 }
