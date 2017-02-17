@@ -69,6 +69,7 @@ struct vchecker_value_arg {
 struct vchecker_callstack_arg {
 	depot_stack_handle_t *handles;
 	atomic_t count;
+	bool enabled;
 };
 
 static struct dentry *debugfs_root;
@@ -698,8 +699,7 @@ static bool check_callstack(struct kmem_cache *s, struct vchecker_cb *cb,
 	if (idx < CALLSTACK_MAX_HANDLE)
 		arg->handles[idx] = handle;
 
-	/* TODO: support reporting new callstack */
-	return true;
+	return !arg->enabled;
 }
 
 static int callstack_show(struct seq_file *f, void *v)
@@ -712,9 +712,36 @@ static int callstack_open(struct inode *inode, struct file *file)
 	return single_open(file, callstack_show, inode->i_private);
 }
 
+static void callstack_onoff(struct file *filp, bool enable)
+{
+	struct kmem_cache *s = file_inode(filp)->i_private;
+	struct vchecker_cb *cb;
+
+	mutex_lock(&vchecker_meta);
+	list_for_each_entry(cb, &s->vchecker_cache.checker->cb_list, list) {
+		if (cb->type == &vchecker_types[VCHECKER_TYPE_CALLSTACK]) {
+			struct vchecker_callstack_arg *arg = cb->arg;
+
+			arg->enabled = enable;
+		}
+	}
+	mutex_unlock(&vchecker_meta);
+}
+
 static ssize_t callstack_write(struct file *filp, const char __user *ubuf,
 			       size_t cnt, loff_t *ppos)
 {
+	char buf[4];
+
+	if (copy_from_user(buf, ubuf, 4))
+		return -EFAULT;
+
+	/* turn on/off existing callstack checkers */
+	if (!strncmp(buf, "on", 2) || !strncmp(buf, "off", 3)) {
+		callstack_onoff(filp, buf[1] == 'n');
+		return cnt;
+	}
+
 	/* add a new (disabled) callstack checker at the given offset */
 	return vchecker_type_write(filp, ubuf, cnt, ppos,
 				   VCHECKER_TYPE_CALLSTACK);
