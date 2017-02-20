@@ -20,6 +20,8 @@
 #include <linux/uaccess.h>
 #include <linux/module.h>
 
+static char dummy[PAGE_SIZE];
+
 /*
  * Note: test functions are marked noinline so that their names appear in
  * reports.
@@ -37,7 +39,7 @@ static noinline void __init kmalloc_oob_right(void)
 		return;
 	}
 
-	ptr[size] = 'x';
+	*(volatile char *)(ptr + size);
 	kfree(ptr);
 }
 
@@ -69,7 +71,7 @@ static noinline void __init kmalloc_node_oob_right(void)
 		return;
 	}
 
-	ptr[size] = 0;
+	*(volatile char *)(ptr + size);
 	kfree(ptr);
 }
 
@@ -89,7 +91,7 @@ static noinline void __init kmalloc_pagealloc_oob_right(void)
 		return;
 	}
 
-	ptr[size] = 0;
+	*(volatile char *)(ptr + size);
 	kfree(ptr);
 }
 #endif
@@ -108,7 +110,7 @@ static noinline void __init kmalloc_large_oob_right(void)
 		return;
 	}
 
-	ptr[size] = 0;
+	*(volatile char *)(ptr + size);
 	kfree(ptr);
 }
 
@@ -127,7 +129,7 @@ static noinline void __init kmalloc_oob_krealloc_more(void)
 		return;
 	}
 
-	ptr2[size2] = 'x';
+	*(volatile char *)(ptr2 + size2);
 	kfree(ptr2);
 }
 
@@ -145,7 +147,7 @@ static noinline void __init kmalloc_oob_krealloc_less(void)
 		kfree(ptr1);
 		return;
 	}
-	ptr2[size2] = 'x';
+	*(volatile char *)(ptr2 + size2);
 	kfree(ptr2);
 }
 
@@ -169,84 +171,84 @@ static noinline void __init kmalloc_oob_16(void)
 	kfree(ptr2);
 }
 
-static noinline void __init kmalloc_oob_memset_2(void)
+static noinline void __init kmalloc_oob_memcpy_2(void)
 {
 	char *ptr;
 	size_t size = 8;
 
-	pr_info("out-of-bounds in memset2\n");
+	pr_info("out-of-bounds in memcpy2\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
 		return;
 	}
 
-	memset(ptr+7, 0, 2);
+	memcpy(dummy, ptr+7, 2);
 	kfree(ptr);
 }
 
-static noinline void __init kmalloc_oob_memset_4(void)
+static noinline void __init kmalloc_oob_memcpy_4(void)
 {
 	char *ptr;
 	size_t size = 8;
 
-	pr_info("out-of-bounds in memset4\n");
+	pr_info("out-of-bounds in memcpy4\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
 		return;
 	}
 
-	memset(ptr+5, 0, 4);
+	memcpy(dummy, ptr+5, 4);
 	kfree(ptr);
 }
 
 
-static noinline void __init kmalloc_oob_memset_8(void)
+static noinline void __init kmalloc_oob_memcpy_8(void)
 {
 	char *ptr;
 	size_t size = 8;
 
-	pr_info("out-of-bounds in memset8\n");
+	pr_info("out-of-bounds in memcpy8\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
 		return;
 	}
 
-	memset(ptr+1, 0, 8);
+	memcpy(dummy, ptr+1, 8);
 	kfree(ptr);
 }
 
-static noinline void __init kmalloc_oob_memset_16(void)
+static noinline void __init kmalloc_oob_memcpy_16(void)
 {
 	char *ptr;
 	size_t size = 16;
 
-	pr_info("out-of-bounds in memset16\n");
+	pr_info("out-of-bounds in memcpy16\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
 		return;
 	}
 
-	memset(ptr+1, 0, 16);
+	memcpy(dummy, ptr+1, 16);
 	kfree(ptr);
 }
 
-static noinline void __init kmalloc_oob_in_memset(void)
+static noinline void __init kmalloc_oob_in_memcpy(void)
 {
 	char *ptr;
 	size_t size = 666;
 
-	pr_info("out-of-bounds in memset\n");
+	pr_info("out-of-bounds in memcpy\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
 		return;
 	}
 
-	memset(ptr, 0, size+5);
+	memcpy(dummy, ptr, size+5);
 	kfree(ptr);
 }
 
@@ -263,15 +265,15 @@ static noinline void __init kmalloc_uaf(void)
 	}
 
 	kfree(ptr);
-	*(ptr + 8) = 'x';
+	*(volatile char *)(ptr + 8);
 }
 
-static noinline void __init kmalloc_uaf_memset(void)
+static noinline void __init kmalloc_uaf_memcpy(void)
 {
 	char *ptr;
 	size_t size = 33;
 
-	pr_info("use-after-free in memset\n");
+	pr_info("use-after-free in memcpy\n");
 	ptr = kmalloc(size, GFP_KERNEL);
 	if (!ptr) {
 		pr_err("Allocation failed\n");
@@ -279,7 +281,7 @@ static noinline void __init kmalloc_uaf_memset(void)
 	}
 
 	kfree(ptr);
-	memset(ptr, 0, size);
+	memcpy(dummy, ptr, size);
 }
 
 static noinline void __init kmalloc_uaf2(void)
@@ -365,9 +367,9 @@ static noinline void __init ksize_unpoisons_memory(void)
 	}
 	real_size = ksize(ptr);
 	/* This access doesn't trigger an error. */
-	ptr[size] = 'x';
+	*(volatile char *)(ptr + size);
 	/* This one does. */
-	ptr[real_size] = 'y';
+	*(volatile char *)(ptr + real_size);
 	kfree(ptr);
 }
 
@@ -451,13 +453,13 @@ static int __init kmalloc_tests_init(void)
 	kmalloc_oob_krealloc_more();
 	kmalloc_oob_krealloc_less();
 	kmalloc_oob_16();
-	kmalloc_oob_in_memset();
-	kmalloc_oob_memset_2();
-	kmalloc_oob_memset_4();
-	kmalloc_oob_memset_8();
-	kmalloc_oob_memset_16();
+	kmalloc_oob_in_memcpy();
+	kmalloc_oob_memcpy_2();
+	kmalloc_oob_memcpy_4();
+	kmalloc_oob_memcpy_8();
+	kmalloc_oob_memcpy_16();
 	kmalloc_uaf();
-	kmalloc_uaf_memset();
+	kmalloc_uaf_memcpy();
 	kmalloc_uaf2();
 	kmem_cache_oob();
 	kasan_stack_oob();
