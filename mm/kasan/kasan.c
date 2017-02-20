@@ -401,6 +401,9 @@ void kasan_cache_create(struct kmem_cache *cache, size_t *size,
 	int redzone_adjust;
 	int orig_size = *size;
 
+	if (kasan_keep_object_layout)
+		return;
+
 	/* Add alloc meta. */
 	cache->kasan_info.alloc_meta_offset = *size;
 	*size += sizeof(struct kasan_alloc_meta);

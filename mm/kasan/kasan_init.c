@@ -37,6 +37,18 @@ pmd_t kasan_zero_pmd[PTRS_PER_PMD] __page_aligned_bss;
 #endif
 pte_t kasan_zero_pte[PTRS_PER_PTE] __page_aligned_bss;
 
+bool kasan_keep_object_layout __read_mostly;
+
+static int __init early_kasan_keep_object_layout(char *buf)
+{
+	if (!buf)
+		return -EINVAL;
+
+	return kstrtobool(buf, &kasan_keep_object_layout);
+}
+early_param("kasan_keep_object_layout", early_kasan_keep_object_layout);
+
+
 static __init void *early_alloc(size_t size, int node)
 {
 	return memblock_virt_alloc_try_nid(size, size, __pa(MAX_DMA_ADDRESS),

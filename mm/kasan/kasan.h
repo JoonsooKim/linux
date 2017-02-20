@@ -86,6 +86,8 @@ struct kasan_free_meta {
 	struct qlist_node quarantine_link;
 };
 
+extern bool kasan_keep_object_layout;
+
 struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,
 					const void *object);
 struct kasan_free_meta *get_free_info(struct kmem_cache *cache,
