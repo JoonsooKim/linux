@@ -571,14 +571,6 @@ static __always_inline u8 pshadow_val(unsigned long addr, size_t size)
 
 static __always_inline bool memory_is_poisoned(unsigned long addr, size_t size)
 {
-	u8 shadow_val = pshadow_val(addr, size);
-
-	if (!shadow_val)
-		return false;
-
-	if (shadow_val != KASAN_PER_PAGE_BYPASS)
-		return true;
-
 	if (__builtin_constant_p(size)) {
 		switch (size) {
 		case 1:
@@ -631,6 +623,9 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 	}
 
 	if (likely(!memory_is_poisoned(addr, size)))
+		return;
+
+	if (!pshadow_val(addr, size))
 		return;
 
 	check_memory_region_slow(addr, size, write, ret_ip);
