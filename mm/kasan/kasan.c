@@ -497,8 +497,11 @@ int kasan_module_alloc(void *addr, size_t size)
 	if (WARN_ON(!PAGE_ALIGNED(shadow_start)))
 		return -EINVAL;
 
-	if (IS_ENABLED(CONFIG_ARM))
+	if (IS_ENABLED(CONFIG_ARM)) {
+		kasan_unpoison_shadow(addr, size);
+		find_vm_area(addr)->flags |= VM_KASAN;
 		return 0;
+	}
 
 	ret = __vmalloc_node_range(shadow_size, 1, shadow_start,
 			shadow_start + shadow_size,
@@ -517,6 +520,11 @@ int kasan_module_alloc(void *addr, size_t size)
 
 void kasan_free_shadow(const struct vm_struct *vm)
 {
+	if (IS_ENABLED(CONFIG_ARM) && vm->flags & VM_KASAN) {
+		kasan_poison_shadow(vm->addr, vm->size, KASAN_FREE_PAGE);
+		return;
+	}
+
 	if (vm->flags & VM_KASAN)
 		vfree(kasan_mem_to_shadow(vm->addr));
 }
@@ -524,15 +532,6 @@ void kasan_free_shadow(const struct vm_struct *vm)
 static void register_global(struct kasan_global *global)
 {
 	size_t aligned_size = round_up(global->size, KASAN_SHADOW_SCALE_SIZE);
-
-	/*
-	 * Currently, ARM doesn't support the shadow memory for vmalloc area.
-	 * Skip globals in modules that is in vmalloc area.
-	 */
-	if (IS_ENABLED(CONFIG_ARM) &&
-		(unsigned long)global->beg >= VMALLOC_START &&
-		(unsigned long)global->beg < VMALLOC_END)
-		return;
 
 	kasan_unpoison_shadow(global->beg, global->size);
 
