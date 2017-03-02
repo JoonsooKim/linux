@@ -68,6 +68,7 @@ struct vchecker_value_arg {
 
 #define CALLSTACK_MAX_HANDLE  (PAGE_SIZE / sizeof(depot_stack_handle_t))
 struct vchecker_callstack_arg {
+	struct stackdepot *s;
 	depot_stack_handle_t *handles;
 	atomic_t count;
 	bool enabled;
@@ -313,8 +314,8 @@ static void filter_vchecker_stacks(struct stack_trace *trace,
 	}
 }
 
-static noinline depot_stack_handle_t save_stack(unsigned long ret_ip,
-						bool *is_new)
+static noinline depot_stack_handle_t save_stack(struct stackdepot *s,
+				unsigned long ret_ip, bool *is_new)
 {
 	unsigned long entries[VCHECKER_STACK_DEPTH];
 	struct stack_trace trace = {
@@ -334,7 +335,7 @@ static noinline depot_stack_handle_t save_stack(unsigned long ret_ip,
 		return 0;
 
 	filter_vchecker_stacks(&trace, ret_ip);
-	handle = depot_save_stack(NULL, &trace, __GFP_ATOMIC, is_new);
+	handle = depot_save_stack(s, &trace, __GFP_ATOMIC, is_new);
 	WARN_ON(!handle);
 
 	return handle;
@@ -584,7 +585,7 @@ static bool check_value(struct kmem_cache *s, struct vchecker_cb *cb,
 	if (!s->vchecker_cache.data_offset)
 		return true;
 
-	handle = save_stack(ret_ip, NULL);
+	handle = save_stack(NULL, ret_ip, NULL);
 	if (!handle) {
 		pr_err("VCHECKER: %s: fail at addr %p\n", __func__, object);
 		dump_stack();
@@ -646,6 +647,14 @@ static int init_callstack(struct kmem_cache *s, struct vchecker_cb *cb,
 		kfree(arg);
 		return -ENOMEM;
 	}
+
+	arg->s = create_stackdepot();
+	if (!arg->s) {
+		free_page((unsigned long)arg->handles);
+		kfree(arg);
+		return -ENOMEM;
+	}
+
 	atomic_set(&arg->count, 0);
 
 	cb->begin = begin;
@@ -659,6 +668,7 @@ static void fini_callstack(struct vchecker_cb *cb)
 {
 	struct vchecker_callstack_arg *arg = cb->arg;
 
+	destroy_stackdepot(arg->s);
 	free_page((unsigned long)arg->handles);
 	kfree(arg);
 }
@@ -671,7 +681,7 @@ static void show_callstack_handle(struct seq_file *f, int idx,
 
 	seq_printf(f, "callstack #%d\n", idx);
 
-	depot_fetch_stack(NULL, arg->handles[idx], &trace);
+	depot_fetch_stack(arg->s, arg->handles[idx], &trace);
 
 	for (i = 0; i < trace.nr_entries; i++)
 		seq_printf(f, "  %pS\n", (void *)trace.entries[i]);
@@ -714,7 +724,7 @@ static bool check_callstack(struct kmem_cache *s, struct vchecker_cb *cb,
 	struct vchecker_callstack_arg *arg = cb->arg;
 	int idx;
 
-	handle = save_stack(ret_ip, &is_new);
+	handle = save_stack(arg->s, ret_ip, &is_new);
 	if (!is_new)
 		return true;
 
