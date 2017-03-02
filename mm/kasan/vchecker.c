@@ -334,7 +334,7 @@ static noinline depot_stack_handle_t save_stack(unsigned long ret_ip,
 		return 0;
 
 	filter_vchecker_stacks(&trace, ret_ip);
-	handle = depot_save_stack(&trace, __GFP_ATOMIC, is_new);
+	handle = depot_save_stack(NULL, &trace, __GFP_ATOMIC, is_new);
 	WARN_ON(!handle);
 
 	return handle;
@@ -541,7 +541,7 @@ static void show_value_stack(struct vchecker_data *data)
 		return;
 
 	pr_err("Call trace: Invalid writer\n");
-	depot_fetch_stack(data->write_handle, &trace);
+	depot_fetch_stack(NULL, data->write_handle, &trace);
 	print_stack_trace(&trace, 0);
 }
 
@@ -671,7 +671,7 @@ static void show_callstack_handle(struct seq_file *f, int idx,
 
 	seq_printf(f, "callstack #%d\n", idx);
 
-	depot_fetch_stack(arg->handles[idx], &trace);
+	depot_fetch_stack(NULL, arg->handles[idx], &trace);
 
 	for (i = 0; i < trace.nr_entries; i++)
 		seq_printf(f, "  %pS\n", (void *)trace.entries[i]);

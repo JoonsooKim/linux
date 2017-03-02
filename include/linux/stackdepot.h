@@ -24,10 +24,15 @@
 typedef u32 depot_stack_handle_t;
 
 struct stack_trace;
+struct stackdepot;
 
-depot_stack_handle_t depot_save_stack(struct stack_trace *trace, gfp_t flags,
-				      bool *is_new);
+depot_stack_handle_t depot_save_stack(struct stackdepot *s,
+		struct stack_trace *trace, gfp_t flags, bool *is_new);
 
-void depot_fetch_stack(depot_stack_handle_t handle, struct stack_trace *trace);
+void depot_fetch_stack(struct stackdepot *s,
+		depot_stack_handle_t handle, struct stack_trace *trace);
+
+struct stackdepot *create_stackdepot(void);
+void destroy_stackdepot(struct stackdepot *s);
 
 #endif

@@ -64,7 +64,7 @@ static noinline void register_dummy_stack(void)
 	dummy.skip = 0;
 
 	save_stack_trace(&dummy);
-	dummy_handle = depot_save_stack(&dummy, GFP_KERNEL, NULL);
+	dummy_handle = depot_save_stack(NULL, &dummy, GFP_KERNEL, NULL);
 }
 
 static noinline void register_failure_stack(void)
@@ -78,7 +78,7 @@ static noinline void register_failure_stack(void)
 	failure.skip = 0;
 
 	save_stack_trace(&failure);
-	failure_handle = depot_save_stack(&failure, GFP_KERNEL, NULL);
+	failure_handle = depot_save_stack(NULL, &failure, GFP_KERNEL, NULL);
 }
 
 static void init_page_owner(void)
@@ -158,7 +158,7 @@ static noinline depot_stack_handle_t save_stack(gfp_t flags)
 	if (check_recursive_alloc(&trace, _RET_IP_))
 		return dummy_handle;
 
-	handle = depot_save_stack(&trace, flags, NULL);
+	handle = depot_save_stack(NULL, &trace, flags, NULL);
 	if (!handle)
 		handle = failure_handle;
 
@@ -360,7 +360,7 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 	if (ret >= count)
 		goto err;
 
-	depot_fetch_stack(handle, &trace);
+	depot_fetch_stack(NULL, handle, &trace);
 	ret += snprint_stack_trace(kbuf + ret, count - ret, &trace, 0);
 	if (ret >= count)
 		goto err;
@@ -423,7 +423,7 @@ void __dump_page_owner(struct page *page)
 		return;
 	}
 
-	depot_fetch_stack(handle, &trace);
+	depot_fetch_stack(NULL, handle, &trace);
 	pr_alert("page allocated via order %u, migratetype %s, gfp_mask %#x(%pGg)\n",
 		 page_owner->order, migratetype_names[mt], gfp_mask, &gfp_mask);
 	print_stack_trace(&trace, 0);
