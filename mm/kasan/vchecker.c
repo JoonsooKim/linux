@@ -127,6 +127,8 @@ void vchecker_init_slab_obj(struct kmem_cache *s, const void *object)
 void vchecker_cache_create(struct kmem_cache *s,
 			size_t *size, unsigned long *flags)
 {
+	*flags |= SLAB_VCHECKER;
+
 	s->vchecker_cache.data_offset = *size;
 	*size += sizeof(struct vchecker_data);
 }
@@ -150,6 +152,26 @@ void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size)
 				    KASAN_VCHECKER_GRAYZONE);
 	}
 	rcu_read_unlock();
+}
+
+void vchecker_enable_obj(struct kmem_cache *s, const void *object,
+			size_t size, bool enable)
+{
+	struct vchecker *checker;
+	struct vchecker_cb *cb;
+	s8 shadow_val = READ_ONCE(*(s8 *)kasan_mem_to_shadow(object));
+	s8 mark = enable ? KASAN_VCHECKER_GRAYZONE : 0;
+
+	/* It would be freed object. We don't need to mark it */
+	if (shadow_val < 0 && (u8)shadow_val != KASAN_VCHECKER_GRAYZONE)
+		return;
+
+	checker = s->vchecker_cache.checker;
+	list_for_each_entry(cb, &checker->cb_list, list) {
+		kasan_poison_shadow(object + cb->begin,
+				round_up(cb->end - cb->begin,
+				     KASAN_SHADOW_SCALE_SIZE), mark);
+	}
 }
 
 static void vchecker_report(unsigned long addr, size_t size, bool write,
@@ -208,7 +230,6 @@ static bool vchecker_poisoned(void *addr, size_t size)
 			return false;
 	}
 
-	/* TODO: unpoison shadow not to come here again */
 	return true;
 }
 
@@ -421,6 +442,7 @@ static ssize_t enable_write(struct file *filp, const char __user *ubuf,
 	 * left that accesses checker's cb list if vchecker is disabled.
 	 */
 	synchronize_sched();
+	vchecker_enable_cache(s, enable);
 	mutex_unlock(&vchecker_meta);
 
 	return cnt;

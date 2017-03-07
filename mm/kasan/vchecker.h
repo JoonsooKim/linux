@@ -20,6 +20,9 @@ void fini_vchecker(struct kmem_cache *s);
 void vchecker_cache_create(struct kmem_cache *s, size_t *size,
 			unsigned long *flags);
 void vchecker_init_slab_obj(struct kmem_cache *s, const void *object);
+void vchecker_enable_cache(struct kmem_cache *s, bool enable);
+void vchecker_enable_obj(struct kmem_cache *s, const void *object,
+			size_t size, bool enable);
 
 #else
 static inline void vchecker_kmalloc(struct kmem_cache *s,
