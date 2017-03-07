@@ -129,6 +129,9 @@ void vchecker_init_slab_obj(struct kmem_cache *s, const void *object)
 {
 	struct vchecker_data *data;
 
+	if (!s->vchecker_cache.data_offset)
+		return;
+
 	data = (void *)object + s->vchecker_cache.data_offset;
 	__memset(data, 0, sizeof(*data));
 }
@@ -137,6 +140,9 @@ void vchecker_cache_create(struct kmem_cache *s,
 			size_t *size, unsigned long *flags)
 {
 	*flags |= SLAB_VCHECKER;
+
+	if (kasan_keep_object_layout)
+		return;
 
 	s->vchecker_cache.data_offset = *size;
 	*size += sizeof(struct vchecker_data);
@@ -551,6 +557,9 @@ static void show_value(struct kmem_cache *s, struct seq_file *f,
 		data = (void *)object + s->vchecker_cache.data_offset;
 
 		pr_err("0x%llx %llu\n", arg->mask, arg->value);
+		if (!s->vchecker_cache.data_offset)
+			return;
+
 		show_value_stack(data);
 	}
 }
@@ -570,6 +579,9 @@ static bool check_value(struct kmem_cache *s, struct vchecker_cb *cb,
 		return false;
 
 	if (!write)
+		return true;
+
+	if (!s->vchecker_cache.data_offset)
 		return true;
 
 	handle = save_stack(ret_ip, NULL);
