@@ -2551,6 +2551,37 @@ static inline bool shuffle_freelist(struct kmem_cache *cachep,
 }
 #endif /* CONFIG_SLAB_FREELIST_RANDOM */
 
+#ifdef CONFIG_VCHECKER
+static void __vchecker_enable_cache(struct kmem_cache *s,
+				struct page *page, bool enable)
+{
+	int i;
+	void *p;
+
+	for (i = 0; i < s->num; i++) {
+		p = index_to_obj(s, page, i);
+		vchecker_enable_obj(s, p, s->object_size, enable);
+	}
+}
+
+void vchecker_enable_cache(struct kmem_cache *s, bool enable)
+{
+	int node;
+	struct kmem_cache_node *n;
+	struct page *page;
+	unsigned long flags;
+
+	for_each_kmem_cache_node(s, node, n) {
+		spin_lock_irqsave(&n->list_lock, flags);
+		list_for_each_entry(page, &n->slabs_partial, lru)
+			__vchecker_enable_cache(s, page, enable);
+		list_for_each_entry(page, &n->slabs_full, lru)
+			__vchecker_enable_cache(s, page, enable);
+		spin_unlock_irqrestore(&n->list_lock, flags);
+	}
+}
+#endif
+
 static void cache_init_objs(struct kmem_cache *cachep,
 			    struct page *page)
 {

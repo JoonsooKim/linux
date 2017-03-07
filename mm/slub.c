@@ -1026,7 +1026,7 @@ static void trace(struct kmem_cache *s, struct page *page, void *object,
 static void add_full(struct kmem_cache *s,
 	struct kmem_cache_node *n, struct page *page)
 {
-	if (!(s->flags & SLAB_STORE_USER))
+	if (!(s->flags & (SLAB_STORE_USER | SLAB_VCHECKER)))
 		return;
 
 	lockdep_assert_held(&n->list_lock);
@@ -1035,7 +1035,7 @@ static void add_full(struct kmem_cache *s,
 
 static void remove_full(struct kmem_cache *s, struct kmem_cache_node *n, struct page *page)
 {
-	if (!(s->flags & SLAB_STORE_USER))
+	if (!(s->flags & (SLAB_STORE_USER | SLAB_VCHECKER)))
 		return;
 
 	lockdep_assert_held(&n->list_lock);
@@ -1554,6 +1554,38 @@ static inline bool shuffle_freelist(struct kmem_cache *s, struct page *page)
 	return false;
 }
 #endif /* CONFIG_SLAB_FREELIST_RANDOM */
+
+#ifdef CONFIG_VCHECKER
+static void __vchecker_enable_cache(struct kmem_cache *s,
+				struct page *page, bool enable)
+{
+	void *p;
+	void *addr = page_address(page);
+
+	if (!page->inuse)
+		return;
+
+	for_each_object(p, s, addr, page->objects)
+		vchecker_enable_obj(s, p, s->object_size, enable);
+}
+
+void vchecker_enable_cache(struct kmem_cache *s, bool enable)
+{
+	int node;
+	struct kmem_cache_node *n;
+	struct page *page;
+	unsigned long flags;
+
+	for_each_kmem_cache_node(s, node, n) {
+		spin_lock_irqsave(&n->list_lock, flags);
+		list_for_each_entry(page, &n->partial, lru)
+			__vchecker_enable_cache(s, page, enable);
+		list_for_each_entry(page, &n->full, lru)
+			__vchecker_enable_cache(s, page, enable);
+		spin_unlock_irqrestore(&n->list_lock, flags);
+	}
+}
+#endif
 
 static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 {

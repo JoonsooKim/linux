@@ -108,6 +108,12 @@
 #define SLAB_KASAN		0
 #endif
 
+#ifdef CONFIG_VCHECKER
+#define SLAB_VCHECKER		0x10000000UL
+#else
+#define SLAB_VCHECKER		0x00000000UL
+#endif
+
 /* The following flags affect the page allocator grouping pages by mobility */
 /* Objects are reclaimable */
 #define SLAB_RECLAIM_ACCOUNT	((slab_flags_t __force)0x00020000U)
