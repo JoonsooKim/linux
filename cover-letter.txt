@@ -1,0 +1,14 @@
+zram: implement deduplication in zram
+
+Changes from v1
+o reogranize dedup specific functions
+o support Kconfig on/off
+o update zram documents
+o compare all the entries with same checksum (patch #4)
+
+This patchset implements deduplication feature in zram. Motivation
+is to save memory usage by zram. There are detailed description
+about motivation and experimental results on patch #2 so please
+refer it.
+
+Thanks.
