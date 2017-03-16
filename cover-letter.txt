@@ -1,0 +1,8 @@
+zram: implement deduplication in zram
+
+This patchset implements deduplication feature in zram. Motivation
+is to save memory usage by zram. There are detailed description
+about motivation and experimental results on patch 3 so please
+refer it.
+
+Thanks.
