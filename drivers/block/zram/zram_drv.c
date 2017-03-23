@@ -385,14 +385,16 @@ static ssize_t mm_stat_show(struct device *dev,
 	max_used = atomic_long_read(&zram->stats.max_used_pages);
 
 	ret = scnprintf(buf, PAGE_SIZE,
-			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu\n",
+			"%8llu %8llu %8llu %8lu %8ld %8llu %8lu %8llu %8llu\n",
 			orig_size << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.compr_data_size),
 			mem_used << PAGE_SHIFT,
 			zram->limit_pages << PAGE_SHIFT,
 			max_used << PAGE_SHIFT,
 			(u64)atomic64_read(&zram->stats.same_pages),
-			pool_stats.pages_compacted);
+			pool_stats.pages_compacted,
+			zram_dedup_dup_size(zram),
+			zram_dedup_meta_size(zram));
 	up_read(&zram->init_lock);
 
 	return ret;
@@ -424,25 +426,30 @@ static struct zram_entry *zram_entry_alloc(struct zram *zram,
 {
 	struct zram_meta *meta = zram->meta;
 	struct zram_entry *entry;
+	unsigned long handle;
 
-	entry = kzalloc(sizeof(*entry), flags);
-	if (!entry)
+	handle = zs_malloc(meta->mem_pool, len, flags);
+	if (!handle)
 		return NULL;
 
-	entry->handle = zs_malloc(meta->mem_pool, len, flags);
-	if (!entry->handle) {
-		kfree(entry);
+	entry = zram_dedup_alloc(zram, handle, flags);
+	if (!entry) {
+		zs_free(meta->mem_pool, handle);
 		return NULL;
 	}
+	entry->len = len;
 
 	return entry;
 }
 
-static inline void zram_entry_free(struct zram_meta *meta,
-			struct zram_entry *entry)
+void zram_entry_free(struct zram *zram, struct zram_meta *meta,
+				struct zram_entry *entry)
 {
-	zs_free(meta->mem_pool, entry->handle);
-	kfree(entry);
+	unsigned long handle;
+
+	handle = zram_dedup_free(zram, entry);
+	if (handle)
+		zs_free(meta->mem_pool, handle);
 }
 
 static void zram_meta_free(struct zram_meta *meta, u64 disksize)
@@ -460,10 +467,11 @@ static void zram_meta_free(struct zram_meta *meta, u64 disksize)
 		if (!entry || zram_test_flag(meta, index, ZRAM_SAME))
 			continue;
 
-		zram_entry_free(meta, entry);
+		zram_entry_free(NULL, meta, entry);
 	}
 
 	zs_destroy_pool(meta->mem_pool);
+	zram_dedup_fini(meta);
 	vfree(meta->table);
 	kfree(meta);
 }
@@ -471,7 +479,7 @@ static void zram_meta_free(struct zram_meta *meta, u64 disksize)
 static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
 {
 	size_t num_pages;
-	struct zram_meta *meta = kmalloc(sizeof(*meta), GFP_KERNEL);
+	struct zram_meta *meta = kzalloc(sizeof(*meta), GFP_KERNEL);
 
 	if (!meta)
 		return NULL;
@@ -480,6 +488,11 @@ static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
 	meta->table = vzalloc(num_pages * sizeof(*meta->table));
 	if (!meta->table) {
 		pr_err("Error allocating zram address table\n");
+		goto out_error;
+	}
+
+	if (zram_dedup_init(meta, num_pages)) {
+		pr_err("Error initializing zram entry hash\n");
 		goto out_error;
 	}
 
@@ -492,6 +505,7 @@ static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
 	return meta;
 
 out_error:
+	zram_dedup_fini(meta);
 	vfree(meta->table);
 	kfree(meta);
 	return NULL;
@@ -521,7 +535,7 @@ static void zram_free_page(struct zram *zram, size_t index)
 	if (!entry)
 		return;
 
-	zram_entry_free(meta, entry);
+	zram_entry_free(zram, meta, entry);
 
 	atomic64_sub(zram_get_obj_size(meta, index),
 			&zram->stats.compr_data_size);
@@ -625,13 +639,14 @@ static int zram_bvec_write(struct zram *zram, struct bio_vec *bvec, u32 index,
 {
 	int ret = 0;
 	unsigned int clen;
-	struct zram_entry *entry = NULL;
+	struct zram_entry *entry = NULL, *found_entry;
 	struct page *page;
 	unsigned char *user_mem, *cmem, *src, *uncmem = NULL;
 	struct zram_meta *meta = zram->meta;
 	struct zcomp_strm *zstrm = NULL;
 	unsigned long alloced_pages;
 	unsigned long element;
+	u32 checksum;
 
 	page = bvec->bv_page;
 	if (is_partial_io(bvec)) {
@@ -673,6 +688,20 @@ compress_again:
 		atomic64_inc(&zram->stats.same_pages);
 		ret = 0;
 		goto out;
+	}
+
+	found_entry = zram_dedup_find(zram, uncmem, &checksum);
+	if (found_entry) {
+		if (!is_partial_io(bvec))
+			kunmap_atomic(user_mem);
+
+		if (entry)
+			zram_entry_free(zram, meta, entry);
+
+		entry = found_entry;
+		clen = entry->len;
+
+		goto found_dup;
 	}
 
 	zstrm = zcomp_stream_get(zram->comp);
@@ -733,7 +762,7 @@ compress_again:
 	update_used_max(zram, alloced_pages);
 
 	if (zram->limit_pages && alloced_pages > zram->limit_pages) {
-		zram_entry_free(meta, entry);
+		zram_entry_free(zram, meta, entry);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -751,7 +780,9 @@ compress_again:
 	zcomp_stream_put(zram->comp);
 	zstrm = NULL;
 	zs_unmap_object(meta->mem_pool, entry->handle);
+	zram_dedup_insert(zram, entry, checksum);
 
+found_dup:
 	/*
 	 * Free memory associated with this sector
 	 * before overwriting unused sectors.
