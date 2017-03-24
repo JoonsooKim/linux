@@ -138,6 +138,7 @@ struct zram {
 	 * zram is claimed so open request will be failed
 	 */
 	bool claim; /* Protected by bdev->bd_mutex */
+	int use_dedup;
 };
 
 void zram_entry_free(struct zram *zram, struct zram_meta *meta,
