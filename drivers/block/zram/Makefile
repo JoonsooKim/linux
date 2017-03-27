@@ -1,3 +1,4 @@
-zram-y	:=	zcomp.o zram_drv.o zram_dedup.o
+zram-y	:=	zcomp.o zram_drv.o
 
-obj-$(CONFIG_ZRAM)	+=	zram.o
+obj-$(CONFIG_ZRAM)		+=	zram.o
+obj-$(CONFIG_ZRAM_DEDUP)	+=	zram_dedup.o

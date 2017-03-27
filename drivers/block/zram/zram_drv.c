@@ -327,6 +327,43 @@ static ssize_t comp_algorithm_store(struct device *dev,
 	return len;
 }
 
+static ssize_t use_dedup_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	bool val;
+	struct zram *zram = dev_to_zram(dev);
+
+	down_read(&zram->init_lock);
+	val = zram->use_dedup;
+	up_read(&zram->init_lock);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", (int)val);
+}
+
+static ssize_t use_dedup_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+#ifdef CONFIG_ZRAM_DEDUP
+	int val;
+	struct zram *zram = dev_to_zram(dev);
+
+	if (kstrtoint(buf, 10, &val) || (val != 0 && val != 1))
+		return -EINVAL;
+
+	down_write(&zram->init_lock);
+	if (init_done(zram)) {
+		up_write(&zram->init_lock);
+		pr_info("Can't change dedup usage for initialized device\n");
+		return -EBUSY;
+	}
+	zram->use_dedup = val;
+	up_write(&zram->init_lock);
+	return len;
+#else
+	return -EINVAL;
+#endif
+}
+
 static ssize_t compact_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
@@ -421,6 +458,12 @@ static DEVICE_ATTR_RO(io_stat);
 static DEVICE_ATTR_RO(mm_stat);
 static DEVICE_ATTR_RO(debug_stat);
 
+static unsigned long zram_entry_handle(struct zram *zram,
+				struct zram_entry *entry)
+{
+	return zram_dedup_handle(zram, entry);
+}
+
 static struct zram_entry *zram_entry_alloc(struct zram *zram,
 					unsigned int len, gfp_t flags)
 {
@@ -475,9 +518,10 @@ static void zram_meta_free(struct zram_meta *meta, u64 disksize)
 	kfree(meta);
 }
 
-static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
+static struct zram_meta *zram_meta_alloc(struct zram *zram, u64 disksize)
 {
 	size_t num_pages;
+	char *pool_name = zram->disk->disk_name;
 	struct zram_meta *meta = kzalloc(sizeof(*meta), GFP_KERNEL);
 
 	if (!meta)
@@ -490,7 +534,7 @@ static struct zram_meta *zram_meta_alloc(char *pool_name, u64 disksize)
 		goto out_error;
 	}
 
-	if (zram_dedup_init(meta, num_pages)) {
+	if (zram_dedup_init(zram, meta, num_pages)) {
 		pr_err("Error initializing zram entry hash\n");
 		goto out_error;
 	}
@@ -562,7 +606,8 @@ static int zram_decompress_page(struct zram *zram, char *mem, u32 index)
 		return 0;
 	}
 
-	cmem = zs_map_object(meta->mem_pool, entry->handle, ZS_MM_RO);
+	cmem = zs_map_object(meta->mem_pool,
+			zram_entry_handle(zram, entry), ZS_MM_RO);
 	if (size == PAGE_SIZE) {
 		copy_page(mem, cmem);
 	} else {
@@ -571,7 +616,7 @@ static int zram_decompress_page(struct zram *zram, char *mem, u32 index)
 		ret = zcomp_decompress(zstrm, cmem, size, mem);
 		zcomp_stream_put(zram->comp);
 	}
-	zs_unmap_object(meta->mem_pool, entry->handle);
+	zs_unmap_object(meta->mem_pool, zram_entry_handle(zram, entry));
 	bit_spin_unlock(ZRAM_ACCESS, &meta->table[index].value);
 
 	/* Should NEVER happen. Return bio error if it does. */
@@ -771,7 +816,8 @@ compress_again:
 		goto out;
 	}
 
-	cmem = zs_map_object(meta->mem_pool, entry->handle, ZS_MM_WO);
+	cmem = zs_map_object(meta->mem_pool,
+			zram_entry_handle(zram, entry), ZS_MM_WO);
 
 	if ((clen == PAGE_SIZE) && !is_partial_io(bvec)) {
 		src = kmap_atomic(page);
@@ -783,7 +829,7 @@ compress_again:
 
 	zcomp_stream_put(zram->comp);
 	zstrm = NULL;
-	zs_unmap_object(meta->mem_pool, entry->handle);
+	zs_unmap_object(meta->mem_pool, zram_entry_handle(zram, entry));
 	zram_dedup_insert(zram, entry, checksum);
 
 found_dup:
@@ -1055,7 +1101,7 @@ static ssize_t disksize_store(struct device *dev,
 		return -EINVAL;
 
 	disksize = PAGE_ALIGN(disksize);
-	meta = zram_meta_alloc(zram->disk->disk_name, disksize);
+	meta = zram_meta_alloc(zram, disksize);
 	if (!meta)
 		return -ENOMEM;
 
@@ -1166,6 +1212,7 @@ static DEVICE_ATTR_WO(mem_limit);
 static DEVICE_ATTR_WO(mem_used_max);
 static DEVICE_ATTR_RW(max_comp_streams);
 static DEVICE_ATTR_RW(comp_algorithm);
+static DEVICE_ATTR_RW(use_dedup);
 
 static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_disksize.attr,
@@ -1176,6 +1223,7 @@ static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_mem_used_max.attr,
 	&dev_attr_max_comp_streams.attr,
 	&dev_attr_comp_algorithm.attr,
+	&dev_attr_use_dedup.attr,
 	&dev_attr_io_stat.attr,
 	&dev_attr_mm_stat.attr,
 	&dev_attr_debug_stat.attr,

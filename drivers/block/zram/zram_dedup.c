@@ -27,6 +27,19 @@ u64 zram_dedup_meta_size(struct zram *zram)
 	return (u64)atomic64_read(&zram->stats.meta_data_size);
 }
 
+static inline bool zram_dedup_enabled(struct zram_meta *meta)
+{
+	return meta->hash;
+}
+
+unsigned long zram_dedup_handle(struct zram *zram, struct zram_entry *entry)
+{
+	if (!zram_dedup_enabled(zram->meta))
+		return (unsigned long)entry;
+
+	return entry->handle;
+}
+
 static u32 zram_dedup_checksum(unsigned char *mem)
 {
 	return jhash(mem, PAGE_SIZE, 0);
@@ -40,6 +53,9 @@ void zram_dedup_insert(struct zram *zram, struct zram_entry *new,
 	struct rb_root *rb_root;
 	struct rb_node **rb_node, *parent = NULL;
 	struct zram_entry *entry;
+
+	if (!zram_dedup_enabled(zram->meta))
+		return;
 
 	new->checksum = checksum;
 	hash = &meta->hash[checksum % meta->hash_size];
@@ -149,6 +165,9 @@ static struct zram_entry *zram_dedup_get(struct zram *zram,
 struct zram_entry *zram_dedup_find(struct zram *zram, unsigned char *mem,
 				u32 *checksum)
 {
+	if (!zram_dedup_enabled(zram->meta))
+		return NULL;
+
 	*checksum = zram_dedup_checksum(mem);
 
 	return zram_dedup_get(zram, mem, *checksum);
@@ -159,6 +178,9 @@ struct zram_entry *zram_dedup_alloc(struct zram *zram,
 				gfp_t flags)
 {
 	struct zram_entry *entry;
+
+	if (!zram_dedup_enabled(zram->meta))
+		return (struct zram_entry *)handle;
 
 	entry = kzalloc(sizeof(*entry),
 			flags & ~(__GFP_HIGHMEM|__GFP_MOVABLE));
@@ -180,6 +202,9 @@ unsigned long zram_dedup_free(struct zram *zram, struct zram_meta *meta,
 {
 	unsigned long handle;
 
+	if (!zram_dedup_enabled(meta))
+		return (unsigned long)entry;
+
 	if (zram_dedup_put(zram, meta, entry))
 		return 0;
 
@@ -193,10 +218,13 @@ unsigned long zram_dedup_free(struct zram *zram, struct zram_meta *meta,
 	return handle;
 }
 
-int zram_dedup_init(struct zram_meta *meta, size_t num_pages)
+int zram_dedup_init(struct zram *zram, struct zram_meta *meta, size_t num_pages)
 {
 	int i;
 	struct zram_hash *hash;
+
+	if (!zram->use_dedup)
+		return 0;
 
 	meta->hash_size = num_pages >> ZRAM_HASH_SHIFT;
 	meta->hash_size = min_t(size_t, ZRAM_HASH_SIZE_MAX, meta->hash_size);
@@ -219,4 +247,5 @@ int zram_dedup_init(struct zram_meta *meta, size_t num_pages)
 void zram_dedup_fini(struct zram_meta *meta)
 {
 	vfree(meta->hash);
+	meta->hash = NULL;
 }
