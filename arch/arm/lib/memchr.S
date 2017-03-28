@@ -14,9 +14,10 @@
 
 	.text
 	.align	5
-.weak memchr
+.weak __memchr
 ENTRY(memchr)
 ENTRY(__memchr)
+ENTRY(____memchr)
 1:	subs	r2, r2, #1
 	bmi	2f
 	ldrb	r3, [r0], #1
@@ -27,3 +28,4 @@ ENTRY(__memchr)
 	ret	lr
 ENDPROC(memchr)
 ENDPROC(__memchr)
+ENDPROC(____memchr)

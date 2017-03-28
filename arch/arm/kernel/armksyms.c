@@ -87,12 +87,16 @@ EXPORT_SYMBOL(strchr);
 EXPORT_SYMBOL(strrchr);
 EXPORT_SYMBOL(memset);
 EXPORT_SYMBOL(__memset);
+EXPORT_SYMBOL(____memset);
 EXPORT_SYMBOL(memcpy);
 EXPORT_SYMBOL(__memcpy);
+EXPORT_SYMBOL(____memcpy);
 EXPORT_SYMBOL(memmove);
 EXPORT_SYMBOL(__memmove);
+EXPORT_SYMBOL(____memmove);
 EXPORT_SYMBOL(memchr);
 EXPORT_SYMBOL(__memchr);
+EXPORT_SYMBOL(____memchr);
 EXPORT_SYMBOL(__memzero);
 
 EXPORT_SYMBOL(mmioset);
