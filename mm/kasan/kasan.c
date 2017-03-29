@@ -322,6 +322,16 @@ void *memcpy(void *dest, const void *src, size_t len)
 	return __memcpy(dest, src, len);
 }
 
+#ifdef CONFIG_ARM
+#undef memchr
+void *memchr(const void *p, int c, size_t len)
+{
+	__asan_loadN((unsigned long)p, len);
+
+	return __memchr(p, c, len);
+}
+#endif
+
 void kasan_alloc_pages(struct page *page, unsigned int order)
 {
 	if (likely(!PageHighMem(page)))
