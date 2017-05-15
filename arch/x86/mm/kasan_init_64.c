@@ -7,6 +7,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task.h>
 #include <linux/vmalloc.h>
+#include <linux/memblock.h>
 
 #include <asm/e820/types.h>
 #include <asm/tlbflush.h>
@@ -14,6 +15,12 @@
 
 extern pgd_t early_level4_pgt[PTRS_PER_PGD];
 extern struct range pfn_mapped[E820_MAX_ENTRIES];
+
+static __init void *early_alloc(size_t size, int node)
+{
+	return memblock_virt_alloc_try_nid(size, size, __pa(MAX_DMA_ADDRESS),
+					BOOTMEM_ALLOC_ACCESSIBLE, node);
+}
 
 static int __init map_range(struct range *range, bool pshadow)
 {
@@ -38,7 +45,9 @@ static int __init map_range(struct range *range, bool pshadow)
 	start = (unsigned long)kasan_mem_to_shadow((void *)start);
 	end = (unsigned long)kasan_mem_to_shadow((void *)end);
 
-	return vmemmap_populate(start, end + 1, NUMA_NO_NODE);
+	kasan_populate_shadow((void *)start, (void *)end + 1,
+						false, true);
+	return 0;
 }
 
 static void __init clear_pgds(unsigned long start,
@@ -240,11 +249,80 @@ void __init kasan_init(void)
 	pr_info("KernelAddressSanitizer initialized\n");
 }
 
+static void __init kasan_map_shadow_late(unsigned long start,
+					unsigned long end)
+{
+	unsigned long addr;
+	unsigned char *page;
+	pgd_t *pgd;
+	p4d_t *p4d;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *ptep;
+	pte_t pte;
+
+	for (addr = start; addr < end; addr += PAGE_SIZE) {
+		pgd = pgd_offset_k(addr);
+		p4d = p4d_offset(pgd, addr);
+		pud = pud_offset(p4d, addr);
+		pmd = pmd_offset(pud, addr);
+		ptep = pte_offset_kernel(pmd, addr);
+
+		page = early_alloc(PAGE_SIZE, NUMA_NO_NODE);
+		pte = pfn_pte(PFN_DOWN(__pa(page)), PAGE_KERNEL);
+		set_pte_at(&init_mm, addr, ptep, pte);
+	}
+}
+
+static void __init __kasan_init_late(unsigned long start, unsigned long end)
+{
+	unsigned long shadow_start, shadow_end;
+
+	shadow_start = (unsigned long)kasan_mem_to_shadow((void *)start);
+	shadow_start = round_down(shadow_start, PAGE_SIZE);
+	shadow_end = (unsigned long)kasan_mem_to_shadow((void *)end);
+	shadow_end = ALIGN(shadow_end, PAGE_SIZE);
+
+	kasan_map_shadow_late(shadow_start, shadow_end);
+	kasan_poison_pshadow((void *)start, ALIGN(end, PAGE_SIZE) - start);
+}
+
+void __init kasan_init_late(void)
+{
+	int cpu;
+	unsigned long start, end;
+
+	for_each_possible_cpu(cpu) {
+		end   = (unsigned long)per_cpu(irq_stack_ptr, cpu);
+		start = end - IRQ_STACK_SIZE;
+
+		__kasan_init_late(start, end);
+
+		start = (unsigned long)per_cpu(exception_stacks, cpu);
+		end = start + sizeof(exception_stacks);
+
+		__kasan_init_late(start, end);
+	}
+}
+
+/*
+ * We cannot flush the TLBs in other cpus due to deadlock
+ * so just flush the TLB in current cpu. Accessing stale TLB
+ * entry would cause following two problem and we can handle them.
+ *
+ * 1. write protection fault: It will be handled by spurious
+ * fault handler. It will invalidate stale TLB entry.
+ * 2. false-positive in KASAN shadow check: It will be
+ * handled by re-check with flushing local TLB.
+ */
 void arch_kasan_map_shadow(unsigned long s, unsigned long e)
 {
+	__flush_tlb_all();
 }
 
 bool arch_kasan_recheck_prepare(unsigned long addr, size_t size)
 {
-	return false;
+	__flush_tlb_all();
+
+	return true;
 }
