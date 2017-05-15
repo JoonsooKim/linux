@@ -21,6 +21,7 @@
 #include <asm/cpumask.h>
 #include <asm/cpu.h>
 #include <asm/stackprotector.h>
+#include <asm/kasan.h>
 
 DEFINE_PER_CPU_READ_MOSTLY(int, cpu_number);
 EXPORT_PER_CPU_SYMBOL(cpu_number);
@@ -309,4 +310,5 @@ void __init setup_per_cpu_areas(void)
 			swapper_pg_dir     + KERNEL_PGD_BOUNDARY,
 			min(KERNEL_PGD_PTRS, KERNEL_PGD_BOUNDARY));
 #endif
+	kasan_init_late();
 }
