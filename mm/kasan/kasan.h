@@ -88,6 +88,7 @@ struct kasan_free_meta {
 	struct qlist_node quarantine_link;
 };
 
+extern unsigned long kasan_zero_page_pfn;
 extern unsigned long kasan_black_page_pfn;
 
 struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,

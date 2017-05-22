@@ -1261,6 +1261,9 @@ static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 	struct page *p = page;
 	unsigned int loop;
 
+	if (kasan_bootmem_fixup(page, order))
+		return;
+
 	prefetchw(p);
 	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {
 		prefetchw(p + 1);
@@ -1592,6 +1595,9 @@ void __init init_cma_reserved_pageblock(struct page *page)
 {
 	unsigned i = pageblock_nr_pages;
 	struct page *p = page;
+
+	if (kasan_bootmem_fixup(page, pageblock_order))
+		return;
 
 	do {
 		__ClearPageReserved(p);
