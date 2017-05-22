@@ -1261,6 +1261,9 @@ static void __init __free_pages_boot_core(struct page *page, unsigned int order)
 	struct page *p = page;
 	unsigned int loop;
 
+	if (kasan_bootmem_fixup(page, order))
+		return;
+
 	prefetchw(p);
 	for (loop = 0; loop < (nr_pages - 1); loop++, p++) {
 		prefetchw(p + 1);

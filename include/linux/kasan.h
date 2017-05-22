@@ -116,6 +116,8 @@ void kasan_krealloc(const void *object, size_t new_size, gfp_t flags);
 void kasan_slab_alloc(struct kmem_cache *s, void *object, gfp_t flags);
 bool kasan_slab_free(struct kmem_cache *s, void *object);
 
+int kasan_bootmem_fixup(struct page *page, unsigned int order);
+
 struct kasan_cache {
 	int alloc_meta_offset;
 	int free_meta_offset;

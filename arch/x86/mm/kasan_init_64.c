@@ -46,7 +46,7 @@ static int __init map_range(struct range *range, bool pshadow)
 	end = (unsigned long)kasan_mem_to_shadow((void *)end);
 
 	kasan_populate_shadow((void *)start, (void *)end + 1,
-						false, true);
+						true, true);
 	return 0;
 }
 

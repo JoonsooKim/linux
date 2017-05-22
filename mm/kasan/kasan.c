@@ -150,6 +150,14 @@ void kasan_unpoison_pshadow(const void *address, size_t size)
 	kasan_mark_pshadow(address, size, 0);
 }
 
+static bool kasan_zero_shadow(pte_t *ptep)
+{
+	if (pte_pfn(*ptep) == kasan_zero_page_pfn)
+		return true;
+
+	return false;
+}
+
 static bool kasan_black_shadow(pte_t *ptep)
 {
 	pte_t pte = *ptep;
@@ -260,9 +268,14 @@ static int kasan_unmap_shadow_pte(pte_t *ptep, pgtable_t token,
 	if (addr >= (unsigned long)_text && addr < (unsigned long)_end)
 		return 0;
 
-	pte = *ptep;
-	page = pfn_to_page(pte_pfn(pte));
-	list_add(&page->lru, list);
+	if (list) {
+		if (kasan_zero_shadow(ptep))
+			WARN_ON_ONCE(1);
+		else {
+			page = pfn_to_page(pte_pfn(*ptep));
+			list_add(&page->lru, list);
+		}
+	}
 
 	pte = pfn_pte(PFN_DOWN(__pa(kasan_black_page)), PAGE_KERNEL);
 	pte = pte_wrprotect(pte);
@@ -364,6 +377,97 @@ static bool kasan_unmap_shadow(struct page *page, unsigned int order,
 	schedule_work(&kasan_unmap_shadow_work);
 
 	return true;
+}
+
+static int kasan_bootmem_fixup_pte(pte_t *ptep, pgtable_t token,
+			unsigned long addr, void *data)
+{
+	struct page *page;
+	pte_t pte;
+
+	if (!kasan_zero_shadow(ptep))
+		return 0;
+
+	if (addr >= (unsigned long)_text && addr < (unsigned long)_end)
+		return 0;
+
+	if (slab_is_available()) {
+		page = alloc_page(GFP_NOWAIT);
+		if (!page)
+			return -ENOMEM;
+
+		__memset(page_address(page), 0, PAGE_SIZE);
+		pte = mk_pte(page, PAGE_KERNEL);
+	} else {
+		pte = pfn_pte(PFN_DOWN(__pa(kasan_black_page)), PAGE_KERNEL);
+		pte = pte_wrprotect(pte);
+	}
+
+	set_pte_at(&init_mm, addr, ptep, pte);
+
+	return 0;
+}
+
+int kasan_bootmem_fixup(struct page *page, unsigned int order)
+{
+	int err;
+	const void *addr;
+	size_t size;
+	unsigned long shadow_start, shadow_end;
+	unsigned long count = 0;
+
+	if (!kasan_pshadow_inited())
+		return 0;
+
+	if (PageHighMem(page))
+		return 0;
+
+	/*
+	 * We cannot use page allocator at this moment thus we cannot allocate
+	 * shadow memory of partial freed page. It's possible to use black
+	 * shadow, however it would cause performance problem so skipping it
+	 * seems to be more safer here.
+	 */
+	if (!slab_is_available()) {
+		if (order < KASAN_SHADOW_SCALE_SHIFT) {
+			pr_info("skip to allocate shadow memory for order %d page", order);
+			return 1;
+		}
+	}
+
+	addr = page_address(page);
+	size = PAGE_SIZE << order;
+	shadow_start = (unsigned long)kasan_mem_to_shadow(addr);
+	shadow_end = (unsigned long)kasan_mem_to_shadow(addr + size);
+	shadow_start = round_down(shadow_start, PAGE_SIZE);
+	shadow_end = ALIGN(shadow_end, PAGE_SIZE);
+
+	err = apply_to_page_range(&init_mm, shadow_start,
+				shadow_end - shadow_start,
+				kasan_exist_shadow_pte, &count);
+	if (err) {
+		pr_err("checking shadow entry is failed");
+		return err;
+	}
+
+	if (!count)
+		return 0;
+
+	err = apply_to_page_range(&init_mm, shadow_start,
+		shadow_end - shadow_start,
+		kasan_bootmem_fixup_pte, NULL);
+
+	local_flush_tlb();
+	flush_cache_vmap(shadow_start, shadow_end);
+	if (err) {
+		pr_err("mapping shadow entry is failed");
+		return err;
+	}
+
+	if (slab_is_available())
+		kasan_poison_shadow(addr, size, KASAN_FREE_PAGE);
+
+	return 0;
 }
 
 /*

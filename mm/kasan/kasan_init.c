@@ -25,6 +25,7 @@
 #include "kasan.h"
 
 unsigned long kasan_pshadow_offset __read_mostly;
+unsigned long kasan_zero_page_pfn __read_mostly;
 unsigned long kasan_black_page_pfn __read_mostly;
 
 /*
@@ -279,6 +280,7 @@ void __init kasan_early_init_pshadow(void)
 					(kernel_offset >> PAGE_SHIFT);
 
 	BUILD_BUG_ON(KASAN_FREE_PAGE != KASAN_PER_PAGE_BYPASS);
+	kasan_zero_page_pfn = PFN_DOWN(__pa(kasan_zero_page));
 	kasan_black_page_pfn = PFN_DOWN(__pa(kasan_black_page));
 	for (i = 0; i < PAGE_SIZE; i++)
 		kasan_black_page[i] = KASAN_FREE_PAGE;
