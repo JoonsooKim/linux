@@ -163,6 +163,22 @@ static inline u32 hash_stack(unsigned long *entries, unsigned int size)
 			       STACK_HASH_SEED);
 }
 
+/* Avoid to sanitize stackdepot memory for performance */
+#if defined(CONFIG_KASAN) && !defined(__SANITIZE_ADDRESS__)
+static int stackdepot_memcmp(const void *cs, const void *ct, size_t count)
+{
+	const unsigned char *su1, *su2;
+	int res = 0;
+
+	for (su1 = cs, su2 = ct; 0 < count; ++su1, ++su2, count--)
+		if ((res = *su1 - *su2) != 0)
+			break;
+	return res;
+}
+#else
+#define stackdepot_memcmp memcmp
+#endif
+
 /* Find a stack that is equal to the one stored in entries in the hash */
 static inline struct stack_record *find_stack(struct stack_record *bucket,
 					     unsigned long *entries, int size,
@@ -173,7 +189,7 @@ static inline struct stack_record *find_stack(struct stack_record *bucket,
 	for (found = bucket; found; found = found->next) {
 		if (found->hash == hash &&
 		    found->size == size &&
-		    !memcmp(entries, found->entries,
+		    !stackdepot_memcmp(entries, found->entries,
 			    size * sizeof(unsigned long))) {
 			return found;
 		}
