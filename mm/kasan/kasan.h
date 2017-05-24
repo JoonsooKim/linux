@@ -108,6 +108,8 @@ static inline bool arch_kasan_recheck_prepare(unsigned long addr,
 static inline bool kasan_pshadow_inited(void) {	return false; }
 #endif
 
+void __kasan_report(unsigned long addr, size_t size,
+		bool is_write, unsigned long ip);
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip);
 void kasan_report_double_free(struct kmem_cache *cache, void *object,

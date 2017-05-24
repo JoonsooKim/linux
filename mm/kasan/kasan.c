@@ -632,7 +632,7 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 
 	if (unlikely((void *)addr <
 		kasan_shadow_to_mem((void *)KASAN_SHADOW_START))) {
-		kasan_report(addr, size, write, ret_ip);
+		__kasan_report(addr, size, write, ret_ip);
 		return;
 	}
 
@@ -643,7 +643,7 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 		return;
 
 	if (!check_memory_region_slow(addr, size))
-		kasan_report(addr, size, write, ret_ip);
+		__kasan_report(addr, size, write, ret_ip);
 }
 
 static void check_memory_region(unsigned long addr,
@@ -689,6 +689,16 @@ void *memcpy(void *dest, const void *src, size_t len)
 	check_memory_region((unsigned long)dest, len, true, _RET_IP_);
 
 	return __memcpy(dest, src, len);
+}
+
+void kasan_report(unsigned long addr, size_t size,
+		bool is_write, unsigned long ip)
+{
+	if (!pshadow_val(addr, size))
+		return;
+
+	if (!check_memory_region_slow(addr, size))
+		__kasan_report(addr, size, is_write, ip);
 }
 
 void kasan_alloc_pages(struct page *page, unsigned int order)
