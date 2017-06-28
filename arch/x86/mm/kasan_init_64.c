@@ -45,8 +45,17 @@ static int __init map_range(struct range *range, bool pshadow)
 	start = (unsigned long)kasan_mem_to_shadow((void *)start);
 	end = (unsigned long)kasan_mem_to_shadow((void *)end);
 
+#ifdef CONFIG_KASAN_INLINE
+	/*
+	 * This optimization isn't stable now and benefit is not
+	 * considerable in KASAN_OUTLINE build.
+	 */
+	kasan_populate_shadow((void *)start, (void *)end + 1,
+						true, true);
+#else
 	kasan_populate_shadow((void *)start, (void *)end + 1,
 						false, true);
+#endif
 	return 0;
 }
 
