@@ -103,6 +103,21 @@ static void omap3_core_restore_context(void)
 	omap_dma_global_context_restore();
 }
 
+static void omap3_print_secure_ram_context(void)
+{
+	int i;
+	int *sram_ctx_api_params;
+
+	sram_ctx_api_params = (int *)_omap_save_secure_sram;
+	sram_ctx_api_params += (save_secure_ram_context_sz / 4);
+	sram_ctx_api_params -= 5;
+
+	for (i = 0; i < 5; i++) {
+		pr_err("save_secure_sram()'s param: %d: 0x%x\n",
+			i, sram_ctx_api_params[i]);
+	}
+}
+
 /*
  * FIXME: This function should be called before entering off-mode after
  * OMAP3 secure services have been accessed. Currently it is only called
@@ -127,6 +142,7 @@ static void omap3_save_secure_ram_context(void)
 		/* Following is for error tracking, it should not happen */
 		if (ret) {
 			pr_err("save_secure_sram() returns %08x\n", ret);
+			omap3_print_secure_ram_context();
 			while (1)
 				;
 		}
