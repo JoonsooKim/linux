@@ -57,6 +57,9 @@ void *omap_sram_push_address(unsigned long size)
 	new_ceil = ROUND_DOWN(new_ceil, FNCPY_ALIGN);
 	omap_sram_ceil = IOMEM(new_ceil);
 
+	printk("SRAM_ADDR: %s: 0x%lx - 0x%lx\n",
+		__func__, omap_sram_ceil, omap_sram_ceil + size);
+
 	return (void *)omap_sram_ceil;
 }
 
@@ -88,6 +91,11 @@ void __init omap_map_sram(unsigned long start, unsigned long size,
 	}
 
 	omap_sram_reset();
+
+	printk("SRAM_ADDR: %s: P: 0x%lx - 0x%lx\n",
+		__func__, start, start + size);
+	printk("SRAM_ADDR: %s: V: 0x%lx - 0x%lx\n",
+		__func__, omap_sram_base, omap_sram_base + size);
 
 	/*
 	 * Looks like we need to preserve some bootloader code at the
