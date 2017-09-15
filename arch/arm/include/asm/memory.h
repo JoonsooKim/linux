@@ -220,6 +220,9 @@ extern const void *__pv_table_begin, *__pv_table_end;
 	: "r" (x), "I" (__PV_BITS_31_24)		\
 	: "cc")
 
+extern void __virt_to_phys_debug(unsigned long x, phys_addr_t t);
+extern void __phys_to_virt_debug(phys_addr_t x, unsigned long t);
+
 static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 {
 	phys_addr_t t;
@@ -230,6 +233,8 @@ static inline phys_addr_t __virt_to_phys_nodebug(unsigned long x)
 		__pv_stub_mov_hi(t);
 		__pv_add_carry_stub(x, t);
 	}
+
+	__virt_to_phys_debug(x, t);
 	return t;
 }
 
@@ -244,6 +249,8 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 	 * in place where 'r' 32 bit operand is expected.
 	 */
 	__pv_stub((unsigned long) x, t, "sub", __PV_BITS_31_24);
+
+	__phys_to_virt_debug(x, t);
 	return t;
 }
 
@@ -265,8 +272,7 @@ static inline unsigned long __phys_to_virt(phys_addr_t x)
 #endif
 
 #define virt_to_pfn(kaddr) \
-	((((unsigned long)(kaddr) - PAGE_OFFSET) >> PAGE_SHIFT) + \
-	 PHYS_PFN_OFFSET)
+	PHYS_PFN(__virt_to_phys_nodebug((unsigned long)kaddr))
 
 #define __pa_symbol_nodebug(x)	__virt_to_phys_nodebug((x))
 

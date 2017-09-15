@@ -1651,3 +1651,25 @@ void __init early_mm_init(const struct machine_desc *mdesc)
 	build_mem_type_table();
 	early_paging_init(mdesc);
 }
+
+extern bool cma_check_addr(phys_addr_t x);
+
+void __virt_to_phys_debug(unsigned long x, phys_addr_t t)
+{
+	if (!cma_check_addr(t))
+		return;
+
+	printk("CMA_ADDR: %s: 0x%lx to 0x%lx\n", __func__, x, (unsigned long)t);
+	dump_stack();
+}
+EXPORT_SYMBOL(__virt_to_phys_debug);
+
+void __phys_to_virt_debug(phys_addr_t x, unsigned long t)
+{
+	if (!cma_check_addr(x))
+		return;
+
+	printk("CMA_ADDR: %s: 0x%lx to 0x%lx\n", __func__, (unsigned long)x, t);
+	dump_stack();
+}
+EXPORT_SYMBOL(__phys_to_virt_debug);

@@ -577,3 +577,21 @@ int cma_for_each_area(int (*it)(struct cma *cma, void *data), void *data)
 
 	return 0;
 }
+
+bool cma_check_addr(phys_addr_t x)
+{
+	int i;
+	struct cma *cma;
+	phys_addr_t s, e;
+
+	for (i = 0; i < cma_area_count; i++) {
+		cma = &cma_areas[i];
+		s = cma_get_base(cma);
+		e = s + cma_get_size(cma);
+
+		if (s <= x && x < e)
+			return true;
+	}
+
+	return false;
+}
