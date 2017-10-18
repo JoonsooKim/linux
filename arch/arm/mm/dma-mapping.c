@@ -587,6 +587,8 @@ static void *__alloc_from_pool(size_t size, struct page **ret_page)
 		ptr = (void *)val;
 	}
 
+	dump_stack();
+
 	return ptr;
 }
 
