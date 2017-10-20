@@ -129,7 +129,7 @@ static void omap3_save_secure_ram_context(void)
 	u32 ret;
 	int mpu_next_state = pwrdm_read_next_pwrst(mpu_pwrdm);
 
-	if (1 || omap_type() != OMAP2_DEVICE_TYPE_GP) {
+	if (omap_type() != OMAP2_DEVICE_TYPE_GP) {
 		/*
 		 * MPU next state must be set to POWER_ON temporarily,
 		 * otherwise the WFI executed inside the ROM code
@@ -456,7 +456,7 @@ void omap_push_sram_idle(void)
 {
 	omap3_do_wfi_sram = omap_sram_push(omap3_do_wfi, omap3_do_wfi_sz);
 
-	if (1 || omap_type() != OMAP2_DEVICE_TYPE_GP)
+	if (omap_type() != OMAP2_DEVICE_TYPE_GP)
 		_omap_save_secure_sram = omap_sram_push(save_secure_ram_context,
 				save_secure_ram_context_sz);
 }
@@ -567,7 +567,7 @@ int __init omap3_pm_init(void)
 		clkdm_add_wkdep(per_clkdm, wkup_clkdm);
 
 	clkdm_add_wkdep(neon_clkdm, mpu_clkdm);
-	if (1 || omap_type() != OMAP2_DEVICE_TYPE_GP) {
+	if (omap_type() != OMAP2_DEVICE_TYPE_GP) {
 		omap3_secure_ram_storage =
 			kmalloc(0x803F, GFP_KERNEL);
 		if (!omap3_secure_ram_storage)

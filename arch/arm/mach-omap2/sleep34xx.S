@@ -114,7 +114,7 @@ ENTRY(save_secure_ram_context)
 	mov	r6, #0xff
 	dsb				@ data write barrier
 	dmb				@ data memory barrier
-	@smc	#1			@ call SMI monitor (smi #1)
+	smc	#1			@ call SMI monitor (smi #1)
 	nop
 	nop
 	nop
