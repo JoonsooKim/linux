@@ -499,6 +499,7 @@ void __init dma_contiguous_remap(void)
 
 		dmac_flush_range(map.virtual, map.virtual + map.length);
 		outer_flush_range(start, end);
+		flush_cache_all();
 
 		/*
 		 * Clear previous low-memory mapping to ensure that the
@@ -513,7 +514,6 @@ void __init dma_contiguous_remap(void)
 		     addr += PMD_SIZE)
 			pmd_clear(pmd_off_k(addr));
 
-		flush_cache_all();
 		flush_tlb_kernel_range(__phys_to_virt(start),
 				       __phys_to_virt(end));
 
