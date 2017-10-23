@@ -1626,7 +1626,7 @@ void __init paging_init(const struct machine_desc *mdesc)
 	prepare_page_table();
 	map_lowmem();
 	memblock_set_current_limit(arm_lowmem_limit);
-	dma_contiguous_remap();
+//	dma_contiguous_remap();
 	early_fixmap_shutdown();
 	devicemaps_init(mdesc);
 	kmap_init();
