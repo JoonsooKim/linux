@@ -500,9 +500,8 @@ void __init dma_contiguous_remap(void)
 		map.length = end - start;
 		map.type = MT_MEMORY_DMA_READY;
 
-		dmac_flush_range(map.virtual, map.virtual + map.length);
-		outer_flush_range(start, end);
 		flush_cache_all();
+		outer_flush_all();
 
 		/*
 		 * Clear previous low-memory mapping to ensure that the
