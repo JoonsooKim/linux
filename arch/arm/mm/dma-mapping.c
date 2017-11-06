@@ -418,9 +418,6 @@ static int __init atomic_pool_init(void)
 	struct page *page;
 	void *ptr;
 
-	pr_err("%s: DMA: disable atomic_pool\n", __func__);
-	return 0;
-
 	atomic_pool = gen_pool_create(PAGE_SHIFT, -1);
 	if (!atomic_pool)
 		goto out;
