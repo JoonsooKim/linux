@@ -1861,7 +1861,7 @@ static int fallbacks[MIGRATE_TYPES][4] = {
 static struct page *__rmqueue_cma_fallback(struct zone *zone,
 					unsigned int order)
 {
-	return NULL;
+	return __rmqueue_smallest(zone, order, MIGRATE_CMA);
 }
 #else
 static inline struct page *__rmqueue_cma_fallback(struct zone *zone,
