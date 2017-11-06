@@ -485,7 +485,6 @@ void __init dma_contiguous_remap(void)
 	if (!dma_mmu_remap_num)
 		return;
 
-	__flush_icache_all();
 	for (i = 0; i < dma_mmu_remap_num; i++) {
 		phys_addr_t start = dma_mmu_remap[i].base;
 		phys_addr_t end = start + dma_mmu_remap[i].size;
