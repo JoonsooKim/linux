@@ -638,6 +638,8 @@ static void *__alloc_from_contiguous(struct device *dev, size_t size,
 
 	__dma_clear_buffer(page, size, coherent_flag);
 
+	return NULL;
+
 	if (!want_vaddr)
 		goto out;
 
