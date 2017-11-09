@@ -468,6 +468,19 @@ out:
  */
 subsys_initcall(atomic_pool_init);
 
+static int __init vmalloc_pool_init(void)
+{
+	struct vm_struct *area;
+
+	area = get_vm_area_caller(atomic_pool_size,
+			VM_ARM_DMA_CONSISTENT | VM_USERMAP,
+			vmalloc_pool_init);
+	pr_err("%s: DMA: get vmalloc area: %p\n", __func__, area->addr);
+
+	return 0;
+}
+postcore_initcall(vmalloc_pool_init);
+
 struct dma_contig_early_reserve {
 	phys_addr_t base;
 	unsigned long size;
