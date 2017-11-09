@@ -466,7 +466,7 @@ out:
 /*
  * CMA is activated by core_initcall, so we must be called after it.
  */
-postcore_initcall(atomic_pool_init);
+subsys_initcall(atomic_pool_init);
 
 struct dma_contig_early_reserve {
 	phys_addr_t base;
