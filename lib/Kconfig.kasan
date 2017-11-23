@@ -63,6 +63,5 @@ config VCHECKER
 	  happens at the area.
 
 	depends on KASAN && DEBUG_FS
-	select KASAN_OUTLINE
 
 endif

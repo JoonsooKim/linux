@@ -413,6 +413,8 @@ void kasan_report(unsigned long addr, size_t size,
 #define DEFINE_ASAN_REPORT_LOAD(size)                     \
 void __asan_report_load##size##_noabort(unsigned long addr) \
 {                                                         \
+	if (vchecker_check(addr, size, false, _RET_IP_))  \
+		return;					  \
 	kasan_report(addr, size, false, _RET_IP_);	  \
 }                                                         \
 EXPORT_SYMBOL(__asan_report_load##size##_noabort)
@@ -420,6 +422,8 @@ EXPORT_SYMBOL(__asan_report_load##size##_noabort)
 #define DEFINE_ASAN_REPORT_STORE(size)                     \
 void __asan_report_store##size##_noabort(unsigned long addr) \
 {                                                          \
+	if (vchecker_check(addr, size, true, _RET_IP_))   \
+		return;					  \
 	kasan_report(addr, size, true, _RET_IP_);	   \
 }                                                          \
 EXPORT_SYMBOL(__asan_report_store##size##_noabort)
@@ -437,12 +441,16 @@ DEFINE_ASAN_REPORT_STORE(16);
 
 void __asan_report_load_n_noabort(unsigned long addr, size_t size)
 {
+	if (vchecker_check(addr, size, false, _RET_IP_))
+		return;
 	kasan_report(addr, size, false, _RET_IP_);
 }
 EXPORT_SYMBOL(__asan_report_load_n_noabort);
 
 void __asan_report_store_n_noabort(unsigned long addr, size_t size)
 {
+	if (vchecker_check(addr, size, true, _RET_IP_))
+		return;
 	kasan_report(addr, size, true, _RET_IP_);
 }
 EXPORT_SYMBOL(__asan_report_store_n_noabort);
