@@ -1418,6 +1418,7 @@ static void setup_object(struct kmem_cache *s, struct page *page,
 				void *object)
 {
 	setup_object_debug(s, page, object);
+	vchecker_init_slab_obj(s, object);
 	kasan_init_slab_obj(s, object);
 	if (unlikely(s->ctor)) {
 		kasan_unpoison_object_data(s, object);
@@ -3550,6 +3551,7 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 		size += 2 * sizeof(struct track);
 #endif
 
+	vchecker_cache_create(s, &size, &s->flags);
 	kasan_cache_create(s, &size, &s->flags);
 #ifdef CONFIG_SLUB_DEBUG
 	if (flags & SLAB_RED_ZONE) {

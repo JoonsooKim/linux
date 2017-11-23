@@ -2076,6 +2076,7 @@ int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 	}
 #endif
 
+	vchecker_cache_create(cachep, &size, &flags);
 	kasan_cache_create(cachep, &size, &flags);
 
 	size = ALIGN(size, cachep->align);
@@ -2601,6 +2602,7 @@ static void cache_init_objs(struct kmem_cache *cachep,
 
 	for (i = 0; i < cachep->num; i++) {
 		objp = index_to_obj(cachep, page, i);
+		vchecker_init_slab_obj(cachep, objp);
 		kasan_init_slab_obj(cachep, objp);
 
 		/* constructor could break poison info */

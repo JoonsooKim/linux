@@ -31,6 +31,10 @@ enum vchecker_type_num {
 	VCHECKER_TYPE_MAX,
 };
 
+struct vchecker_data {
+	void *dummy;
+};
+
 struct vchecker_type {
 	char *name;
 	const struct file_operations *fops;
@@ -109,10 +113,21 @@ static int remove_cbs(struct kmem_cache *s, struct vchecker_type *t)
 	return 0;
 }
 
+void vchecker_init_slab_obj(struct kmem_cache *s, const void *object)
+{
+	struct vchecker_data *data;
+
+	data = (void *)object + s->vchecker_cache.data_offset;
+	__memset(data, 0, sizeof(*data));
+}
+
 void vchecker_cache_create(struct kmem_cache *s,
 			size_t *size, slab_flags_t *flags)
 {
 	*flags |= SLAB_VCHECKER;
+
+	s->vchecker_cache.data_offset = *size;
+	*size += sizeof(struct vchecker_data);
 }
 
 void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size)
