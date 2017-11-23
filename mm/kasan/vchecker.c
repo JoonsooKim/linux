@@ -301,13 +301,20 @@ static noinline depot_stack_handle_t save_stack(int skip, bool *is_new)
 		.max_entries = VCHECKER_STACK_DEPTH,
 		.skip = skip,
 	};
+	depot_stack_handle_t handle;
 
 	save_stack_trace(&trace);
 	if (trace.nr_entries != 0 &&
 	    trace.entries[trace.nr_entries-1] == ULONG_MAX)
 		trace.nr_entries--;
 
-	return depot_save_stack(NULL, &trace, GFP_NOWAIT, is_new);
+	if (trace.nr_entries == 0)
+		return 0;
+
+	handle = depot_save_stack(NULL, &trace, __GFP_ATOMIC, is_new);
+	WARN_ON(!handle);
+
+	return handle;
 }
 
 static ssize_t vchecker_type_write(struct file *filp, const char __user *ubuf,
