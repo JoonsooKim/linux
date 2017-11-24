@@ -118,7 +118,7 @@ static noinline void save_stack(struct drm_mm_node *node)
 		trace.nr_entries--;
 
 	/* May be called under spinlock, so avoid sleeping */
-	node->stack = depot_save_stack(&trace, GFP_NOWAIT);
+	node->stack = depot_save_stack(NULL, &trace, GFP_NOWAIT, NULL);
 }
 
 static void show_leaks(struct drm_mm *mm)
@@ -143,7 +143,7 @@ static void show_leaks(struct drm_mm *mm)
 			continue;
 		}
 
-		depot_fetch_stack(node->stack, &trace);
+		depot_fetch_stack(NULL, node->stack, &trace);
 		snprint_stack_trace(buf, BUFSZ, &trace, 0);
 		DRM_ERROR("node [%08llx + %08llx]: inserted at\n%s",
 			  node->start, node->size, buf);

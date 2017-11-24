@@ -299,7 +299,7 @@ static noinline depot_stack_handle_t save_stack(void)
 	    trace.entries[trace.nr_entries-1] == ULONG_MAX)
 		trace.nr_entries--;
 
-	return depot_save_stack(&trace, GFP_NOWAIT, NULL);
+	return depot_save_stack(NULL, &trace, GFP_NOWAIT, NULL);
 }
 
 static ssize_t vchecker_type_write(struct file *filp, const char __user *ubuf,
@@ -503,7 +503,7 @@ static void show_value_stack(struct vchecker_data *data)
 		return;
 
 	pr_err("Invalid writer:\n");
-	depot_fetch_stack(data->write_handle, &trace);
+	depot_fetch_stack(NULL, data->write_handle, &trace);
 	print_stack_trace(&trace, 0);
 	pr_err("\n");
 }

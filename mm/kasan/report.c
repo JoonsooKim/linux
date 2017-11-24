@@ -183,7 +183,7 @@ static void print_track(struct kasan_track *track, const char *prefix)
 	if (track->stack) {
 		struct stack_trace trace;
 
-		depot_fetch_stack(track->stack, &trace);
+		depot_fetch_stack(NULL, track->stack, &trace);
 		print_stack_trace(&trace, 0);
 	} else {
 		pr_err("(stack is not available)\n");
