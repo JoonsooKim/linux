@@ -16,10 +16,13 @@
 #include <linux/mutex.h>
 #include <linux/kasan.h>
 #include <linux/uaccess.h>
+#include <linux/stackdepot.h>
 
 #include "vchecker.h"
 #include "../slab.h"
 #include "kasan.h"
+
+#define VCHECKER_STACK_DEPTH (16)
 
 struct vchecker {
 	bool enabled;
@@ -32,7 +35,7 @@ enum vchecker_type_num {
 };
 
 struct vchecker_data {
-	void *dummy;
+	depot_stack_handle_t write_handle;
 };
 
 struct vchecker_type {
@@ -281,6 +284,24 @@ check_shadow:
 	return vchecker_poisoned((void *)addr, size);
 }
 
+static noinline depot_stack_handle_t save_stack(void)
+{
+	unsigned long entries[VCHECKER_STACK_DEPTH];
+	struct stack_trace trace = {
+		.nr_entries = 0,
+		.entries = entries,
+		.max_entries = VCHECKER_STACK_DEPTH,
+		.skip = 0
+	};
+
+	save_stack_trace(&trace);
+	if (trace.nr_entries != 0 &&
+	    trace.entries[trace.nr_entries-1] == ULONG_MAX)
+		trace.nr_entries--;
+
+	return depot_save_stack(&trace, GFP_NOWAIT);
+}
+
 static ssize_t vchecker_type_write(struct file *filp, const char __user *ubuf,
 			size_t cnt, loff_t *ppos,
 			enum vchecker_type_num type)
@@ -474,17 +495,35 @@ static void fini_value(struct vchecker_cb *cb)
 	kfree(cb->arg);
 }
 
+static void show_value_stack(struct vchecker_data *data)
+{
+	struct stack_trace trace;
+
+	if (!data->write_handle)
+		return;
+
+	pr_err("Invalid writer:\n");
+	depot_fetch_stack(data->write_handle, &trace);
+	print_stack_trace(&trace, 0);
+	pr_err("\n");
+}
+
 static void show_value(struct kmem_cache *s, struct seq_file *f,
 			struct vchecker_cb *cb, void *object)
 {
 	struct vchecker_value_arg *arg = cb->arg;
+	struct vchecker_data *data;
 
 	if (f)
 		seq_printf(f, "(mask 0x%llx value %llu) invalid value %llu\n\n",
 			arg->mask, arg->value, arg->value & arg->mask);
-	else
+	else {
+		data = (void *)object + s->vchecker_cache.data_offset;
+
 		pr_err("(mask 0x%llx value %llu) invalid value %llu\n\n",
 			arg->mask, arg->value, arg->value & arg->mask);
+		show_value_stack(data);
+	}
 }
 
 static bool check_value(struct kmem_cache *s, struct vchecker_cb *cb,
@@ -492,14 +531,29 @@ static bool check_value(struct kmem_cache *s, struct vchecker_cb *cb,
 			unsigned long begin, unsigned long end)
 {
 	struct vchecker_value_arg *arg;
+	struct vchecker_data *data;
 	u64 value;
+	depot_stack_handle_t handle;
 
+	if (!write)
+		goto check;
+
+	handle = save_stack();
+	if (!handle) {
+		pr_err("VCHECKER: %s: fail at addr %p\n", __func__, object);
+		dump_stack();
+	}
+
+	data = (void *)object + s->vchecker_cache.data_offset;
+	data->write_handle = handle;
+
+check:
 	arg = cb->arg;
 	value = *(u64 *)(object + begin);
-	if ((value & arg->mask) != (arg->value & arg->mask))
-		return true;
+	if ((value & arg->mask) == (arg->value & arg->mask))
+		return false;
 
-	return false;
+	return true;
 }
 
 static int value_show(struct seq_file *f, void *v)
