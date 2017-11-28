@@ -17,6 +17,7 @@
 #include <linux/kasan.h>
 #include <linux/uaccess.h>
 #include <linux/stackdepot.h>
+#include <linux/kallsyms.h>
 
 #include "vchecker.h"
 #include "../slab.h"
@@ -28,6 +29,7 @@
 struct vchecker {
 	bool enabled;
 	unsigned int callstack_depth;
+	struct list_head alloc_filter_list;
 	struct list_head cb_list;
 };
 
@@ -73,6 +75,12 @@ struct vchecker_callstack_arg {
 	depot_stack_handle_t *handles;
 	atomic_t count;
 	bool enabled;
+};
+
+struct vchecker_alloc_filter {
+	unsigned long begin;
+	unsigned long end;
+	struct list_head list;
 };
 
 static struct dentry *debugfs_root;
@@ -149,6 +157,7 @@ void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size,
 {
 	struct vchecker *checker;
 	struct vchecker_cb *cb;
+	struct vchecker_alloc_filter *af;
 
 	rcu_read_lock();
 	checker = s->vchecker_cache.checker;
@@ -157,6 +166,18 @@ void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size,
 		return;
 	}
 
+	if (list_empty(&checker->alloc_filter_list))
+		goto mark;
+
+	list_for_each_entry(af, &checker->alloc_filter_list, list) {
+		if (af->begin <= ret_ip && ret_ip < af->end)
+			goto mark;
+	}
+
+	rcu_read_unlock();
+	return;
+
+mark:
 	list_for_each_entry(cb, &checker->cb_list, list) {
 		kasan_poison_shadow(object + cb->begin,
 				    round_up(cb->end - cb->begin,
@@ -476,9 +497,13 @@ static ssize_t enable_write(struct file *filp, const char __user *ubuf,
 	/*
 	 * After this operation, it is guaranteed that there is no user
 	 * left that accesses checker's cb list if vchecker is disabled.
+	 * Don't mark the object if alloc_filter is enabled. We cannot
+	 * know the allocation caller at this moment.
 	 */
 	synchronize_sched();
-	vchecker_enable_cache(s, enable);
+	if (!enable ||
+		list_empty(&s->vchecker_cache.checker->alloc_filter_list))
+		vchecker_enable_cache(s, enable);
 	mutex_unlock(&vchecker_meta);
 
 	return cnt;
@@ -551,6 +576,99 @@ setup:
 static const struct file_operations callstack_depth_fops = {
 	.open		= callstack_depth_open,
 	.write		= callstack_depth_write,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int alloc_filter_show(struct seq_file *f, void *v)
+{
+	char name[KSYM_NAME_LEN];
+	struct kmem_cache *s = f->private;
+	struct vchecker *checker = s->vchecker_cache.checker;
+	struct vchecker_alloc_filter *af;
+
+	mutex_lock(&vchecker_meta);
+	list_for_each_entry(af, &checker->alloc_filter_list, list) {
+		if (!lookup_symbol_name(af->begin, name))
+			seq_printf(f, "%s: ", name);
+		seq_printf(f, "0x%lx - 0x%lx\n", af->begin, af->end);
+	}
+	mutex_unlock(&vchecker_meta);
+
+	return 0;
+}
+
+static int alloc_filter_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, alloc_filter_show, inode->i_private);
+}
+
+static void remove_alloc_filters(struct vchecker *checker)
+{
+	struct vchecker_alloc_filter *af, *tmp;
+
+	list_for_each_entry_safe(af, tmp, &checker->alloc_filter_list, list) {
+		list_del(&af->list);
+		kfree(af);
+	}
+}
+
+static ssize_t alloc_filter_write(struct file *filp, const char __user *ubuf,
+			size_t cnt, loff_t *ppos)
+{
+	char filter_chars[KSYM_NAME_LEN];
+	struct kmem_cache *s = file_inode(filp)->i_private;
+	struct vchecker *checker = s->vchecker_cache.checker;
+	unsigned long begin;
+	unsigned long size;
+	struct vchecker_alloc_filter *af = NULL;
+
+	if (cnt >= KSYM_NAME_LEN || cnt == 0)
+		return -EINVAL;
+
+	if (copy_from_user(&filter_chars, ubuf, cnt))
+		return -EFAULT;
+
+	if (isspace(filter_chars[0]))
+		goto change;
+
+	filter_chars[cnt - 1] = '\0';
+	begin = kallsyms_lookup_name(filter_chars);
+	if (!begin)
+		return -EINVAL;
+
+	kallsyms_lookup_size_offset(begin, &size, NULL);
+
+	af = kzalloc(sizeof(*af), GFP_KERNEL);
+	if (!af)
+		return -ENOMEM;
+
+	af->begin = begin;
+	af->end = begin + size;
+
+change:
+	mutex_lock(&vchecker_meta);
+	if (checker->enabled || !list_empty(&checker->cb_list)) {
+		mutex_unlock(&vchecker_meta);
+		kfree(af);
+
+		return -EINVAL;
+	}
+
+	if (af)
+		list_add_tail(&af->list, &checker->alloc_filter_list);
+	else
+		remove_alloc_filters(checker);
+
+	mutex_unlock(&vchecker_meta);
+
+	return cnt;
+}
+
+static const struct file_operations alloc_filter_fops = {
+	.open		= alloc_filter_open,
+	.write		= alloc_filter_write,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
@@ -865,6 +983,7 @@ static void free_vchecker(struct kmem_cache *s)
 	if (!s->vchecker_cache.checker)
 		return;
 
+	remove_alloc_filters(s->vchecker_cache.checker);
 	for (i = 0; i < ARRAY_SIZE(vchecker_types); i++)
 		remove_cbs(s, &vchecker_types[i]);
 	kfree(s->vchecker_cache.checker);
@@ -895,6 +1014,7 @@ static int alloc_vchecker(struct kmem_cache *s)
 		return -ENOMEM;
 
 	checker->callstack_depth = VCHECKER_STACK_DEPTH;
+	INIT_LIST_HEAD(&checker->alloc_filter_list);
 	INIT_LIST_HEAD(&checker->cb_list);
 	s->vchecker_cache.checker = checker;
 
@@ -920,6 +1040,10 @@ static int register_debugfs(struct kmem_cache *s)
 
 	if (!debugfs_create_file("callstack_depth", 0600, dir, s,
 				&callstack_depth_fops))
+		return -ENOMEM;
+
+	if (!debugfs_create_file("alloc_filter", 0600, dir, s,
+				&alloc_filter_fops))
 		return -ENOMEM;
 
 	for (i = 0; i < ARRAY_SIZE(vchecker_types); i++) {
