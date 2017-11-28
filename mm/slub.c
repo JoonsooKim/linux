@@ -2755,7 +2755,7 @@ redo:
 	if (unlikely(gfpflags & __GFP_ZERO) && object)
 		memset(object, 0, s->object_size);
 
-	slab_post_alloc_hook(s, gfpflags, 1, &object);
+	slab_post_alloc_hook(s, gfpflags, 1, &object, addr);
 
 	return object;
 }
@@ -2783,6 +2783,7 @@ void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 	void *ret = slab_alloc(s, gfpflags, _RET_IP_);
 	trace_kmalloc(_RET_IP_, ret, size, s->size, gfpflags);
 	kasan_kmalloc(s, ret, size, gfpflags);
+	vchecker_kmalloc(s, ret, size, _RET_IP_);
 	return ret;
 }
 EXPORT_SYMBOL(kmem_cache_alloc_trace);
@@ -2811,6 +2812,7 @@ void *kmem_cache_alloc_node_trace(struct kmem_cache *s,
 			   size, s->size, gfpflags, node);
 
 	kasan_kmalloc(s, ret, size, gfpflags);
+	vchecker_kmalloc(s, ret, size, _RET_IP_);
 	return ret;
 }
 EXPORT_SYMBOL(kmem_cache_alloc_node_trace);
@@ -3184,11 +3186,11 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 	}
 
 	/* memcg and kmem_cache debug support */
-	slab_post_alloc_hook(s, flags, size, p);
+	slab_post_alloc_hook(s, flags, size, p, _RET_IP_);
 	return i;
 error:
 	local_irq_enable();
-	slab_post_alloc_hook(s, flags, i, p);
+	slab_post_alloc_hook(s, flags, i, p, _RET_IP_);
 	__kmem_cache_free_bulk(s, i, p);
 	return 0;
 }
@@ -3388,6 +3390,7 @@ static void early_kmem_cache_node_alloc(int node)
 #endif
 	kasan_kmalloc(kmem_cache_node, n, sizeof(struct kmem_cache_node),
 		      GFP_KERNEL);
+	vchecker_kmalloc(kmem_cache_node, n, sizeof(*n), _RET_IP_);
 	init_kmem_cache_node(n);
 	inc_slabs_node(kmem_cache_node, node, page->objects);
 
@@ -3794,6 +3797,7 @@ void *__kmalloc(size_t size, gfp_t flags)
 	trace_kmalloc(_RET_IP_, ret, size, s->size, flags);
 
 	kasan_kmalloc(s, ret, size, flags);
+	vchecker_kmalloc(s, ret, size, _RET_IP_);
 
 	return ret;
 }
@@ -3839,6 +3843,7 @@ void *__kmalloc_node(size_t size, gfp_t flags, int node)
 	trace_kmalloc_node(_RET_IP_, ret, size, s->size, flags, node);
 
 	kasan_kmalloc(s, ret, size, flags);
+	vchecker_kmalloc(s, ret, size, _RET_IP_);
 
 	return ret;
 }

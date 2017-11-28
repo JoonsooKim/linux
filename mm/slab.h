@@ -435,7 +435,8 @@ static inline struct kmem_cache *slab_pre_alloc_hook(struct kmem_cache *s,
 }
 
 static inline void slab_post_alloc_hook(struct kmem_cache *s, gfp_t flags,
-					size_t size, void **p)
+					size_t size, void **p,
+					unsigned long caller)
 {
 	size_t i;
 
@@ -446,6 +447,7 @@ static inline void slab_post_alloc_hook(struct kmem_cache *s, gfp_t flags,
 		kmemleak_alloc_recursive(object, s->object_size, 1,
 					 s->flags, flags);
 		kasan_slab_alloc(s, object, flags);
+		vchecker_kmalloc(s, object, s->object_size, caller);
 	}
 
 	if (memcg_kmem_enabled())

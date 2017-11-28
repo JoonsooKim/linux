@@ -3359,7 +3359,7 @@ slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid,
 	if (unlikely(flags & __GFP_ZERO) && ptr)
 		memset(ptr, 0, cachep->object_size);
 
-	slab_post_alloc_hook(cachep, flags, 1, &ptr);
+	slab_post_alloc_hook(cachep, flags, 1, &ptr, caller);
 	return ptr;
 }
 
@@ -3416,7 +3416,7 @@ slab_alloc(struct kmem_cache *cachep, gfp_t flags, unsigned long caller)
 	if (unlikely(flags & __GFP_ZERO) && objp)
 		memset(objp, 0, cachep->object_size);
 
-	slab_post_alloc_hook(cachep, flags, 1, &objp);
+	slab_post_alloc_hook(cachep, flags, 1, &objp, caller);
 	return objp;
 }
 
@@ -3579,6 +3579,7 @@ void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 	void *ret = slab_alloc(cachep, flags, _RET_IP_);
 
 	kasan_slab_alloc(cachep, ret, flags);
+	vchecker_kmalloc(cachep, ret, cachep->object_size, _RET_IP_);
 	trace_kmem_cache_alloc(_RET_IP_, ret,
 			       cachep->object_size, cachep->size, flags);
 
@@ -3624,13 +3625,13 @@ int kmem_cache_alloc_bulk(struct kmem_cache *s, gfp_t flags, size_t size,
 		for (i = 0; i < size; i++)
 			memset(p[i], 0, s->object_size);
 
-	slab_post_alloc_hook(s, flags, size, p);
+	slab_post_alloc_hook(s, flags, size, p, _RET_IP_);
 	/* FIXME: Trace call missing. Christoph would like a bulk variant */
 	return size;
 error:
 	local_irq_enable();
 	cache_alloc_debugcheck_after_bulk(s, flags, i, p, _RET_IP_);
-	slab_post_alloc_hook(s, flags, i, p);
+	slab_post_alloc_hook(s, flags, i, p, _RET_IP_);
 	__kmem_cache_free_bulk(s, i, p);
 	return 0;
 }
@@ -3645,6 +3646,7 @@ kmem_cache_alloc_trace(struct kmem_cache *cachep, gfp_t flags, size_t size)
 	ret = slab_alloc(cachep, flags, _RET_IP_);
 
 	kasan_kmalloc(cachep, ret, size, flags);
+	vchecker_kmalloc(cachep, ret, size, _RET_IP_);
 	trace_kmalloc(_RET_IP_, ret,
 		      size, cachep->size, flags);
 	return ret;
@@ -3669,6 +3671,7 @@ void *kmem_cache_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid)
 	void *ret = slab_alloc_node(cachep, flags, nodeid, _RET_IP_);
 
 	kasan_slab_alloc(cachep, ret, flags);
+	vchecker_kmalloc(cachep, ret, cachep->object_size, _RET_IP_);
 	trace_kmem_cache_alloc_node(_RET_IP_, ret,
 				    cachep->object_size, cachep->size,
 				    flags, nodeid);
@@ -3688,6 +3691,7 @@ void *kmem_cache_alloc_node_trace(struct kmem_cache *cachep,
 	ret = slab_alloc_node(cachep, flags, nodeid, _RET_IP_);
 
 	kasan_kmalloc(cachep, ret, size, flags);
+	vchecker_kmalloc(cachep, ret, size, _RET_IP_);
 	trace_kmalloc_node(_RET_IP_, ret,
 			   size, cachep->size,
 			   flags, nodeid);
@@ -3707,6 +3711,7 @@ __do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller)
 		return cachep;
 	ret = kmem_cache_alloc_node_trace(cachep, flags, node, size);
 	kasan_kmalloc(cachep, ret, size, flags);
+	vchecker_kmalloc(cachep, ret, size, _RET_IP_);
 
 	return ret;
 }
@@ -3743,6 +3748,7 @@ static __always_inline void *__do_kmalloc(size_t size, gfp_t flags,
 	ret = slab_alloc(cachep, flags, caller);
 
 	kasan_kmalloc(cachep, ret, size, flags);
+	vchecker_kmalloc(cachep, ret, size, _RET_IP_);
 	trace_kmalloc(caller, ret,
 		      size, cachep->size, flags);
 

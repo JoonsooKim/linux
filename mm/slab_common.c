@@ -1446,12 +1446,18 @@ static __always_inline void *__do_krealloc(const void *p, size_t new_size,
 {
 	void *ret;
 	size_t ks = 0;
+	struct page *page;
 
 	if (p)
 		ks = ksize(p);
 
 	if (ks >= new_size) {
 		kasan_krealloc((void *)p, new_size, flags);
+		page = virt_to_head_page(p);
+		if (PageSlab(page)) {
+			vchecker_kmalloc(page->slab_cache, p,
+					new_size, _RET_IP_);
+		}
 		return (void *)p;
 	}
 

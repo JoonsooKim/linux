@@ -144,7 +144,8 @@ void vchecker_cache_create(struct kmem_cache *s,
 	*size += sizeof(struct vchecker_data);
 }
 
-void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size)
+void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size,
+			unsigned long ret_ip)
 {
 	struct vchecker *checker;
 	struct vchecker_cb *cb;

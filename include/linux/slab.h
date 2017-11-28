@@ -421,6 +421,7 @@ static __always_inline void *kmem_cache_alloc_trace(struct kmem_cache *s,
 	void *ret = kmem_cache_alloc(s, flags);
 
 	kasan_kmalloc(s, ret, size, flags);
+	vchecker_kmalloc(s, ret, size, _THIS_IP_);
 	return ret;
 }
 
@@ -432,6 +433,7 @@ kmem_cache_alloc_node_trace(struct kmem_cache *s,
 	void *ret = kmem_cache_alloc_node(s, gfpflags, node);
 
 	kasan_kmalloc(s, ret, size, gfpflags);
+	vchecker_kmalloc(s, ret, size, _THIS_IP_);
 	return ret;
 }
 #endif /* CONFIG_TRACING */

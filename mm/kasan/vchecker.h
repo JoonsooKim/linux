@@ -12,7 +12,8 @@ struct vchecker_cache {
 
 
 #ifdef CONFIG_VCHECKER
-void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size);
+void vchecker_kmalloc(struct kmem_cache *s, const void *object, size_t size,
+			unsigned long ret_ip);
 bool vchecker_check(unsigned long addr, size_t size,
 			bool write, unsigned long ret_ip);
 int init_vchecker(struct kmem_cache *s);
@@ -26,7 +27,7 @@ void vchecker_enable_obj(struct kmem_cache *s, const void *object,
 
 #else
 static inline void vchecker_kmalloc(struct kmem_cache *s,
-	const void *object, size_t size) { }
+	const void *object, size_t size, unsigned long ret_ip) { }
 static inline bool vchecker_check(unsigned long addr, size_t size,
 			bool write, unsigned long ret_ip) { return false; }
 static inline int init_vchecker(struct kmem_cache *s) { return 0; }
