@@ -370,7 +370,7 @@ static ssize_t vchecker_type_write(struct file *filp, const char __user *ubuf,
 	bool remove = false;
 	int ret = -EINVAL;
 
-	if (cnt >= PAGE_SIZE)
+	if (cnt >= PAGE_SIZE || cnt == 0)
 		return -EINVAL;
 
 	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
@@ -382,9 +382,9 @@ static ssize_t vchecker_type_write(struct file *filp, const char __user *ubuf,
 		return -EFAULT;
 	}
 
-	if (isspace(buf[0]))
+	buf[cnt] = '\0';
+	if (buf[0] == '\n')
 		remove = true;
-	buf[cnt - 1] = '\0';
 
 	mutex_lock(&vchecker_meta);
 	if (s->vchecker_cache.checker->enabled)
@@ -547,12 +547,13 @@ static ssize_t callstack_depth_write(struct file *filp, const char __user *ubuf,
 	if (copy_from_user(&callstack_depth_chars, ubuf, cnt))
 		return -EFAULT;
 
-	if (isspace(callstack_depth_chars[0])) {
+
+	callstack_depth_chars[cnt] = '\0';
+	if (callstack_depth_chars[0] == '\n') {
 		callstack_depth = VCHECKER_STACK_DEPTH;
 		goto setup;
 	}
 
-	callstack_depth_chars[cnt - 1] = '\0';
 	if (kstrtouint(callstack_depth_chars, 10, &callstack_depth))
 		return -EINVAL;
 
@@ -630,11 +631,11 @@ static ssize_t alloc_filter_write(struct file *filp, const char __user *ubuf,
 	if (copy_from_user(&filter_chars, ubuf, cnt))
 		return -EFAULT;
 
-	if (isspace(filter_chars[0]))
+	filter_chars[cnt] = '\0';
+	if (filter_chars[0] == '\n')
 		goto change;
 
-	filter_chars[cnt - 1] = '\0';
-	begin = kallsyms_lookup_name(filter_chars);
+	begin = kallsyms_lookup_name(strim(filter_chars));
 	if (!begin)
 		return -EINVAL;
 
