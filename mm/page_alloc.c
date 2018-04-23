@@ -7169,6 +7169,9 @@ static void setup_per_zone_lowmem_reserve(void)
 
 			zone->lowmem_reserve[j] = 0;
 
+			if (j == ZONE_MOVABLE)
+				managed_pages = 0;
+
 			idx = j;
 			while (idx) {
 				struct zone *lower_zone;
