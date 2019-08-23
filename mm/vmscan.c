@@ -1010,8 +1010,15 @@ static enum page_references page_check_references(struct page *page,
 		return PAGEREF_RECLAIM;
 
 	if (referenced_ptes) {
-		if (PageSwapBacked(page))
-			return PAGEREF_ACTIVATE;
+		if (PageSwapBacked(page)) {
+			if (referenced_page) {
+				ClearPageReferenced(page);
+				return PAGEREF_ACTIVATE;
+			}
+
+			SetPageReferenced(page);
+			return PAGEREF_KEEP;
+		}
 		/*
 		 * All mapped pages start out with page table
 		 * references from the instantiating fault, so we need
@@ -2056,6 +2063,15 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			}
 		}
 
+		/*
+		 * Now, newly created anonymous page isn't appened to the
+		 * active list. We don't need to clear the reference bit here.
+		 */
+		if (PageSwapBacked(page)) {
+			ClearPageReferenced(page);
+			goto deactivate;
+		}
+
 		if (page_referenced(page, 0, sc->target_mem_cgroup,
 				    &vm_flags)) {
 			nr_rotated += hpage_nr_pages(page);
@@ -2074,6 +2090,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			}
 		}
 
+deactivate:
 		ClearPageActive(page);	/* we are de-activating */
 		SetPageWorkingset(page);
 		list_add(&page->lru, &l_inactive);
