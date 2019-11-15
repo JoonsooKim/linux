@@ -2945,6 +2945,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	int locked;
 	int exclusive = 0;
 	vm_fault_t ret = 0;
+	void *shadow = NULL;
 
 	if (!pte_unmap_same(vma->vm_mm, vmf->pmd, vmf->pte, vmf->orig_pte))
 		goto out;
@@ -2983,6 +2984,7 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 				__SetPageLocked(page);
 				__SetPageSwapBacked(page);
 				set_page_private(page, entry.val);
+				shadow = get_shadow_from_swap_cache(entry);
 				lru_cache_add_anon(page);
 				swap_readpage(page, true);
 			}
@@ -3097,6 +3099,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	} else {
 		do_page_add_anon_rmap(page, vma, vmf->address, exclusive);
 		mem_cgroup_commit_charge(page, memcg, true, false);
+	}
+
+	if (shadow) {
+		workingset_refault(page, shadow);
+		if (PageActive(page) && PageLRU(page))
+			activate_page(page);
 	}
 
 	swap_free(entry);
