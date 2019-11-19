@@ -257,6 +257,19 @@ void *workingset_eviction(struct page *page, struct mem_cgroup *target_memcg)
 	VM_BUG_ON_PAGE(page_count(page), page);
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
+	/*
+	 * A page can be without a cgroup here when it was brought in by
+	 * swap readahead and nobody has touched it since.
+	 *
+	 * The idea behind the workingset code is to tell on page fault
+	 * time whether pages have been previously used or not. Since
+	 * this page hasn't been used, don't store a shadow entry for it;
+	 * when it later faults back in, we treat it as the new page
+	 * that it is.
+	 */
+	if (!page_memcg(page))
+		return NULL;
+
 	advance_inactive_age(page_memcg(page), pgdat, file);
 
 	lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
