@@ -187,6 +187,9 @@ int get_kernel_page(unsigned long start, int write, struct page **pages)
 }
 EXPORT_SYMBOL_GPL(get_kernel_page);
 
+static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
+				 void *arg);
+
 static void pagevec_lru_move_fn(struct pagevec *pvec,
 	void (*move_fn)(struct page *page, struct lruvec *lruvec, void *arg),
 	void *arg)
@@ -199,6 +202,7 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 	for (i = 0; i < pagevec_count(pvec); i++) {
 		struct page *page = pvec->pages[i];
 		struct pglist_data *pagepgdat = page_pgdat(page);
+		void *arg_orig = arg;
 
 		if (pagepgdat != pgdat) {
 			if (pgdat)
@@ -207,8 +211,22 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 			spin_lock_irqsave(&pgdat->lru_lock, flags);
 		}
 
+		if (move_fn == __pagevec_lru_add_fn) {
+			struct list_head *entry = &page->lru;
+			unsigned long next = (unsigned long)entry->next;
+			unsigned long rotate = next & 2;
+
+			if (rotate) {
+				VM_BUG_ON(arg);
+
+				next = next & ~2;
+				entry->next = (struct list_head *)next;
+				arg = (void *)rotate;
+			}
+		}
 		lruvec = mem_cgroup_page_lruvec(page, pgdat);
 		(*move_fn)(page, lruvec, arg);
+		arg = arg_orig;
 	}
 	if (pgdat)
 		spin_unlock_irqrestore(&pgdat->lru_lock, flags);
@@ -474,6 +492,14 @@ void lru_cache_add_inactive_or_unevictable(struct page *page,
 		__mod_zone_page_state(page_zone(page), NR_MLOCK,
 				    hpage_nr_pages(page));
 		count_vm_event(UNEVICTABLE_PGMLOCKED);
+	}
+
+	if (PageSwapBacked(page) && evictable) {
+		struct list_head *entry = &page->lru;
+		unsigned long next = (unsigned long)entry->next;
+
+		next = next | 2;
+		entry->next = (struct list_head *)next;
 	}
 	lru_cache_add(page);
 }
@@ -927,6 +953,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 {
 	enum lru_list lru;
 	int was_unevictable = TestClearPageUnevictable(page);
+	unsigned long rotate = (unsigned long)arg;
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
@@ -962,7 +989,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 	if (page_evictable(page)) {
 		lru = page_lru(page);
 		update_page_reclaim_stat(lruvec, page_is_file_cache(page),
-					 PageActive(page));
+					 PageActive(page) | rotate);
 		if (was_unevictable)
 			count_vm_event(UNEVICTABLE_PGRESCUED);
 	} else {
