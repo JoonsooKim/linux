@@ -468,7 +468,13 @@ static unsigned long count_shadow_nodes(struct shrinker *shrinker,
 	 * PAGE_SIZE / xa_nodes / node_entries * 8 / PAGE_SIZE
 	 */
 #ifdef CONFIG_MEMCG
-	if (sc->memcg) {
+	/*
+	 * Kernel allocation on root memcg isn't regarded as allocation of
+	 * specific memcg. So, if sc->memcg is the root memcg, we need to
+	 * use the count for the node rather than one for the specific
+	 * memcg.
+	 */
+	if (sc->memcg && !mem_cgroup_is_root(sc->memcg)) {
 		struct lruvec *lruvec;
 		int i;
 
