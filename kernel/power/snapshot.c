@@ -1227,7 +1227,7 @@ static struct page *saveable_highmem_page(struct zone *zone, unsigned long pfn)
 	if (!page || page_zone(page) != zone)
 		return NULL;
 
-	BUG_ON(!PageHighMem(page));
+	BUG_ON(!PageHighMemZone(page));
 
 	if (swsusp_page_is_forbidden(page) ||  swsusp_page_is_free(page))
 		return NULL;
@@ -1291,7 +1291,7 @@ static struct page *saveable_page(struct zone *zone, unsigned long pfn)
 	if (!page || page_zone(page) != zone)
 		return NULL;
 
-	BUG_ON(PageHighMem(page));
+	BUG_ON(PageHighMemZone(page));
 
 	if (swsusp_page_is_forbidden(page) || swsusp_page_is_free(page))
 		return NULL;
@@ -1529,7 +1529,7 @@ static unsigned long preallocate_image_pages(unsigned long nr_pages, gfp_t mask)
 		if (!page)
 			break;
 		memory_bm_set_bit(&copy_bm, page_to_pfn(page));
-		if (PageHighMem(page))
+		if (PageHighMemZone(page))
 			alloc_highmem++;
 		else
 			alloc_normal++;
@@ -1625,7 +1625,7 @@ static unsigned long free_unnecessary_pages(void)
 		unsigned long pfn = memory_bm_next_pfn(&copy_bm);
 		struct page *page = pfn_to_page(pfn);
 
-		if (PageHighMem(page)) {
+		if (PageHighMemZone(page)) {
 			if (!to_free_highmem)
 				continue;
 			to_free_highmem--;
@@ -2264,7 +2264,7 @@ static unsigned int count_highmem_image_pages(struct memory_bitmap *bm)
 	memory_bm_position_reset(bm);
 	pfn = memory_bm_next_pfn(bm);
 	while (pfn != BM_END_OF_MAP) {
-		if (PageHighMem(pfn_to_page(pfn)))
+		if (PageHighMemZone(pfn_to_page(pfn)))
 			cnt++;
 
 		pfn = memory_bm_next_pfn(bm);
@@ -2541,7 +2541,7 @@ static void *get_buffer(struct memory_bitmap *bm, struct chain_allocator *ca)
 		return ERR_PTR(-EFAULT);
 
 	page = pfn_to_page(pfn);
-	if (PageHighMem(page))
+	if (PageHighMemZone(page))
 		return get_highmem_page_buffer(page, ca);
 
 	if (swsusp_page_is_forbidden(page) && swsusp_page_is_free(page))
