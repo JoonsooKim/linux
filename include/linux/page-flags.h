@@ -378,10 +378,16 @@ PAGEFLAG(Readahead, reclaim, PF_NO_COMPOUND)
 /*
  * Must use a macro here due to header dependency issues. page_zone() is not
  * available at this point.
+ * PageHighMem() is for checking if the direct mapping exists or not.
+ * PageHighMemZone() is for checking the zone, where the page is belong to,
+ * in order to predict previous gfp_flags or to count something for system
+ * memory management.
  */
 #define PageHighMem(__p) is_highmem_idx(page_zonenum(__p))
+#define PageHighMemZone(__p) is_highmem_idx(page_zonenum(__p))
 #else
 PAGEFLAG_FALSE(HighMem)
+PAGEFLAG_FALSE(HighMemZone)
 #endif
 
 #ifdef CONFIG_SWAP
