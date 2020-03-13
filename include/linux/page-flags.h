@@ -375,6 +375,8 @@ PAGEFLAG(Readahead, reclaim, PF_NO_COMPOUND)
 	TESTCLEARFLAG(Readahead, reclaim, PF_NO_COMPOUND)
 
 #ifdef CONFIG_HIGHMEM
+extern unsigned long max_low_pfn;
+
 /*
  * Must use a macro here due to header dependency issues. page_zone() is not
  * available at this point.
@@ -383,7 +385,7 @@ PAGEFLAG(Readahead, reclaim, PF_NO_COMPOUND)
  * in order to predict previous gfp_flags or to count something for system
  * memory management.
  */
-#define PageHighMem(__p) is_highmem_idx(page_zonenum(__p))
+#define PageHighMem(__p) (page_to_pfn(__p) >= max_low_pfn)
 #define PageHighMemZone(__p) is_highmem_idx(page_zonenum(__p))
 #else
 PAGEFLAG_FALSE(HighMem)
