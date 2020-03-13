@@ -641,7 +641,7 @@ int ttm_mem_global_alloc_page(struct ttm_mem_global *glob,
 	 */
 
 #ifdef CONFIG_HIGHMEM
-	if (PageHighMem(page) && glob->zone_highmem != NULL)
+	if (PageHighMemZone(page) && glob->zone_highmem != NULL)
 		zone = glob->zone_highmem;
 #else
 	if (glob->zone_dma32 && page_to_pfn(page) > 0x00100000UL)
@@ -656,7 +656,7 @@ void ttm_mem_global_free_page(struct ttm_mem_global *glob, struct page *page,
 	struct ttm_mem_zone *zone = NULL;
 
 #ifdef CONFIG_HIGHMEM
-	if (PageHighMem(page) && glob->zone_highmem != NULL)
+	if (PageHighMemZone(page) && glob->zone_highmem != NULL)
 		zone = glob->zone_highmem;
 #else
 	if (glob->zone_dma32 && page_to_pfn(page) > 0x00100000UL)

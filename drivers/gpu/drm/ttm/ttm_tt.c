@@ -119,7 +119,7 @@ static int ttm_tt_set_page_caching(struct page *p,
 {
 	int ret = 0;
 
-	if (PageHighMem(p))
+	if (PageHighMemZone(p))
 		return 0;
 
 	if (c_old != tt_cached) {

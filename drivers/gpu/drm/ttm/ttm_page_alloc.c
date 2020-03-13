@@ -530,7 +530,7 @@ static int ttm_alloc_new_pages(struct list_head *pages, gfp_t gfp_flags,
 		/* gfp flags of highmem page should never be dma32 so we
 		 * we should be fine in such case
 		 */
-		if (PageHighMem(p))
+		if (PageHighMemZone(p))
 			continue;
 
 #endif
