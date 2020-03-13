@@ -1603,7 +1603,7 @@ static struct page *new_non_cma_page(struct page *page, unsigned long private)
 	 */
 	gfp_t gfp_mask = GFP_USER | __GFP_NOWARN;
 
-	if (PageHighMem(page))
+	if (PageHighMemZone(page))
 		gfp_mask |= __GFP_HIGHMEM;
 
 #ifdef CONFIG_HUGETLB_PAGE
