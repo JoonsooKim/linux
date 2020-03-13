@@ -747,7 +747,7 @@ static int ttm_dma_pool_alloc_new_pages(struct dma_pool *pool,
 		/* gfp flags of highmem page should never be dma32 so we
 		 * we should be fine in such case
 		 */
-		if (PageHighMem(p))
+		if (PageHighMemZone(p))
 			continue;
 #endif
 
