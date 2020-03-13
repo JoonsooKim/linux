@@ -766,7 +766,7 @@ static struct page *kimage_alloc_page(struct kimage *image,
 			 * gfp_flags honor the ones passed in.
 			 */
 			if (!(gfp_mask & __GFP_HIGHMEM) &&
-			    PageHighMem(old_page)) {
+			    PageHighMemZone(old_page)) {
 				kimage_free_pages(old_page);
 				continue;
 			}
