@@ -2639,7 +2639,7 @@ static void try_to_free_low(struct hstate *h, unsigned long count,
 		list_for_each_entry_safe(page, next, freel, lru) {
 			if (count >= h->nr_huge_pages)
 				return;
-			if (PageHighMem(page))
+			if (PageHighMemZone(page))
 				continue;
 			list_del(&page->lru);
 			update_and_free_page(h, page);
