@@ -593,7 +593,7 @@ void generic_online_page(struct page *page, unsigned int order)
 	__free_pages_core(page, order);
 	totalram_pages_add(1UL << order);
 #ifdef CONFIG_HIGHMEM
-	if (PageHighMem(page))
+	if (PageHighMemZone(page))
 		totalhigh_pages_add(1UL << order);
 #endif
 }
