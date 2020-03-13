@@ -47,7 +47,7 @@ static inline struct page *new_page_nodemask(struct page *page,
 		order = HPAGE_PMD_ORDER;
 	}
 
-	if (PageHighMem(page) || (zone_idx(page_zone(page)) == ZONE_MOVABLE))
+	if (PageHighMemZone(page) || zone_idx(page_zone(page)) == ZONE_MOVABLE)
 		gfp_mask |= __GFP_HIGHMEM;
 
 	new_page = __alloc_pages_nodemask(gfp_mask, order,
