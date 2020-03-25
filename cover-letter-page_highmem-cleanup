@@ -1,0 +1,75 @@
+change the implemenation of the PageHighMem()
+
+Hello,
+
+This patchset separates two use cases of PageHighMem() by introducing
+PageHighMemZone() macro. And, it changes the implementation of
+PageHighMem() to reflect the actual meaning of this macro. This patchset
+is a preparation step for the patchset,
+"mm/cma: manage the memory of the CMA area by using the ZONE_MOVABLE" [1].
+
+PageHighMem() is used for two different cases. One is to check if there
+is a direct mapping for this page or not. The other is to check the
+zone of this page, that is, weather it is the highmem type zone or not.
+
+Until now, both the cases are the perfectly same thing. So, implementation
+of the PageHighMem() uses the one case that checks if the zone of the page
+is the highmem type zone or not.
+
+"#define PageHighMem(__p) is_highmem_idx(page_zonenum(__p))"
+
+ZONE_MOVABLE is special. It is considered as normal type zone on
+!CONFIG_HIGHMEM, but, it is considered as highmem type zone
+on CONFIG_HIGHMEM. Let's focus on later case. In later case, all pages
+on the ZONE_MOVABLE has no direct mapping until now.
+
+However, following patchset
+"mm/cma: manage the memory of the CMA area by using the ZONE_MOVABLE"
+, which is once merged and reverted, will be tried again and will break
+this assumption that all pages on the ZONE_MOVABLE has no direct mapping.
+Hence, the ZONE_MOVABLE which is considered as highmem type zone could
+have the both types of pages, direct mapped and not. Since
+the ZONE_MOVABLE could have both type of pages, __GFP_HIGHMEM is still
+required to allocate the memory from it. And, we conservatively need to
+consider the ZONE_MOVABLE as highmem type zone.
+
+Even in this situation, PageHighMem() for the pages on the ZONE_MOVABLE
+when it is called for checking the direct mapping should return correct
+result. Current implementation of PageHighMem() just returns TRUE
+if the zone of the page is on a highmem type zone. So, it could be wrong
+if the page on the MOVABLE_ZONE is actually direct mapped.
+
+To solve this potential problem, this patch introduces a new
+PageHighMemZone() macro. In following patches, two use cases of
+PageHighMem() are separated by calling proper macro, PageHighMem() and
+PageHighMemZone(). Then, implementation of PageHighMem() will be changed
+as just checking if the direct mapping exists or not, regardless of
+the zone of the page.
+
+Note that there are some rules to determine the proper macro.
+
+1. If PageHighMem() is called for checking if the direct mapping exists
+or not, use PageHighMem().
+2. If PageHighMem() is used to predict the previous gfp_flags for
+this page, use PageHighMemZone(). The zone of the page is related to
+the gfp_flags.
+3. If purpose of calling PageHighMem() is to count highmem page and
+to interact with the system by using this count, use PageHighMemZone().
+This counter is usually used to calculate the available memory for an
+kernel allocation and pages on the highmem zone cannot be available
+for an kernel allocation.
+4. Otherwise, use PageHighMemZone(). It's safe since it's implementation
+is just copy of the previous PageHighMem() implementation and won't
+be changed.
+
+My final plan is to change the name, PageHighMem() to PageNoDirectMapped()
+or something else in order to represent proper meaning.
+
+This patchset is based on next-20200420 and you can find the full patchset
+on the following link.
+
+https://github.com/JoonsooKim/linux/tree/page_highmem-cleanup-v1.00-next-20200420
+
+Thanks.
+
+[1]: https://lore.kernel.org/linux-mm/1512114786-5085-1-git-send-email-iamjoonsoo.kim@lge.com
