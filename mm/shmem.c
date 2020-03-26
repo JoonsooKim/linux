@@ -1369,7 +1369,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	if (list_empty(&info->swaplist))
 		list_add(&info->swaplist, &shmem_swaplist);
 
-	if (add_to_swap_cache(page, swap,
+	if (add_to_swap_cache(page, swap, NULL,
 			__GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN,
 			NULL) == 0) {
 		spin_lock_irq(&info->lock);
@@ -1434,10 +1434,11 @@ static inline struct mempolicy *shmem_get_sbmpol(struct shmem_sb_info *sbinfo)
 #endif
 
 static void shmem_pseudo_vma_init(struct vm_area_struct *vma,
-		struct shmem_inode_info *info, pgoff_t index)
+			struct mm_struct *mm, struct shmem_inode_info *info,
+			pgoff_t index)
 {
 	/* Create a pseudo vma that just contains the policy */
-	vma_init(vma, NULL);
+	vma_init(vma, mm);
 	/* Bias interleave by inode number to distribute better across nodes */
 	vma->vm_pgoff = index + info->vfs_inode.i_ino;
 	vma->vm_policy = mpol_shared_policy_lookup(&info->policy, index);
@@ -1450,13 +1451,14 @@ static void shmem_pseudo_vma_destroy(struct vm_area_struct *vma)
 }
 
 static struct page *shmem_swapin(swp_entry_t swap, gfp_t gfp,
-			struct shmem_inode_info *info, pgoff_t index)
+			struct mm_struct *mm, struct shmem_inode_info *info,
+			pgoff_t index)
 {
 	struct vm_area_struct pvma;
 	struct page *page;
 	struct vm_fault vmf;
 
-	shmem_pseudo_vma_init(&pvma, info, index);
+	shmem_pseudo_vma_init(&pvma, mm, info, index);
 	vmf.vma = &pvma;
 	vmf.address = 0;
 	page = swap_cluster_readahead(swap, gfp, &vmf);
@@ -1481,7 +1483,7 @@ static struct page *shmem_alloc_hugepage(gfp_t gfp,
 								XA_PRESENT))
 		return NULL;
 
-	shmem_pseudo_vma_init(&pvma, info, hindex);
+	shmem_pseudo_vma_init(&pvma, NULL, info, hindex);
 	page = alloc_pages_vma(gfp | __GFP_COMP | __GFP_NORETRY | __GFP_NOWARN,
 			HPAGE_PMD_ORDER, &pvma, 0, numa_node_id(), true);
 	shmem_pseudo_vma_destroy(&pvma);
@@ -1496,7 +1498,7 @@ static struct page *shmem_alloc_page(gfp_t gfp,
 	struct vm_area_struct pvma;
 	struct page *page;
 
-	shmem_pseudo_vma_init(&pvma, info, index);
+	shmem_pseudo_vma_init(&pvma, NULL, info, index);
 	page = alloc_page_vma(gfp, &pvma, 0);
 	shmem_pseudo_vma_destroy(&pvma);
 
@@ -1652,7 +1654,7 @@ static int shmem_swapin_page(struct inode *inode, pgoff_t index,
 			count_memcg_event_mm(charge_mm, PGMAJFAULT);
 		}
 		/* Here we actually start the io */
-		page = shmem_swapin(swap, gfp, info, index);
+		page = shmem_swapin(swap, gfp, charge_mm, info, index);
 		if (!page) {
 			error = -ENOMEM;
 			goto failed;

@@ -112,7 +112,7 @@ void show_swap_cache_info(void)
  * but sets SwapCache flag and private instead of mapping and index.
  */
 int add_to_swap_cache(struct page *page, swp_entry_t entry,
-			gfp_t gfp, void **shadowp)
+			struct vm_area_struct *vma, gfp_t gfp, void **shadowp)
 {
 	struct address_space *address_space = swap_address_space(entry);
 	pgoff_t idx = swp_offset(entry);
@@ -120,13 +120,25 @@ int add_to_swap_cache(struct page *page, swp_entry_t entry,
 	unsigned long i, nr = compound_nr(page);
 	unsigned long nrexceptional = 0;
 	void *old;
+	bool compound = !!compound_order(page);
+	int error;
+	struct mm_struct *mm = vma ? vma->vm_mm : current->mm;
+	struct mem_cgroup *memcg;
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(PageSwapCache(page), page);
 	VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
 
 	page_ref_add(page, nr);
+	/* PageSwapCache() prevent the page from being re-charged */
 	SetPageSwapCache(page);
+
+	error = mem_cgroup_try_charge(page, mm, gfp, &memcg, compound);
+	if (error) {
+		ClearPageSwapCache(page);
+		page_ref_sub(page, nr);
+		return error;
+	}
 
 	do {
 		xas_lock_irq(&xas);
@@ -153,11 +165,16 @@ unlock:
 		xas_unlock_irq(&xas);
 	} while (xas_nomem(&xas, gfp));
 
-	if (!xas_error(&xas))
+	if (!xas_error(&xas)) {
+		mem_cgroup_commit_charge(page, memcg, false, compound);
 		return 0;
+	}
+
+	mem_cgroup_cancel_charge(page, memcg, compound);
 
 	ClearPageSwapCache(page);
 	page_ref_sub(page, nr);
+
 	return xas_error(&xas);
 }
 
@@ -221,7 +238,7 @@ int add_to_swap(struct page *page)
 	/*
 	 * Add it to the swap cache.
 	 */
-	err = add_to_swap_cache(page, entry,
+	err = add_to_swap_cache(page, entry, NULL,
 			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, NULL);
 	if (err)
 		/*
@@ -431,7 +448,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		/* May fail (-ENOMEM) if XArray node allocation failed. */
 		__SetPageLocked(new_page);
 		__SetPageSwapBacked(new_page);
-		err = add_to_swap_cache(new_page, entry,
+		err = add_to_swap_cache(new_page, entry, vma,
 				gfp_mask & GFP_KERNEL, NULL);
 		if (likely(!err)) {
 			/* Initiate read into locked page */
