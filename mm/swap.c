@@ -45,6 +45,7 @@
 int page_cluster;
 
 static DEFINE_PER_CPU(struct pagevec, lru_add_pvec);
+static DEFINE_PER_CPU(struct pagevec, lru_add_new_anon_pvec);
 static DEFINE_PER_CPU(struct pagevec, lru_rotate_pvecs);
 static DEFINE_PER_CPU(struct pagevec, lru_deactivate_file_pvecs);
 static DEFINE_PER_CPU(struct pagevec, lru_deactivate_pvecs);
@@ -272,6 +273,23 @@ static void update_page_reclaim_stat(struct lruvec *lruvec,
 		reclaim_stat->recent_rotated[file]++;
 }
 
+void update_anon_page_reclaim_stat(struct page *page)
+{
+	pg_data_t *pgdat;
+	struct lruvec *lruvec;
+	struct zone_reclaim_stat *reclaim_stat;
+
+	page = compound_head(page);
+	pgdat = page_pgdat(page);
+	spin_lock_irq(&pgdat->lru_lock);
+	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
+		lruvec = mem_cgroup_page_lruvec(page, pgdat);
+		reclaim_stat = &lruvec->reclaim_stat;
+		update_page_reclaim_stat(lruvec, 0, 1);
+	}
+	spin_unlock_irq(&pgdat->lru_lock);
+}
+
 static void __activate_page(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
@@ -333,9 +351,8 @@ void activate_page(struct page *page)
 }
 #endif
 
-static void __lru_cache_activate_page(struct page *page)
+static bool lookup_activate_page(struct pagevec *pvec, struct page *page)
 {
-	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);
 	int i;
 
 	/*
@@ -352,12 +369,35 @@ static void __lru_cache_activate_page(struct page *page)
 		struct page *pagevec_page = pvec->pages[i];
 
 		if (pagevec_page == page) {
-			SetPageActive(page);
-			break;
+			return true;
 		}
 	}
+	return false;
+}
 
+static void __lru_cache_activate_page(struct page *page)
+{
+	struct pagevec *pvec;
+	bool ret;
+
+	pvec = &get_cpu_var(lru_add_pvec);
+	ret = lookup_activate_page(pvec, page);
 	put_cpu_var(lru_add_pvec);
+
+	if (ret) {
+		SetPageActive(page);
+		return;
+	}
+
+	if (!PageSwapBacked(page))
+		return;
+
+	pvec = &get_cpu_var(lru_add_new_anon_pvec);
+	ret = lookup_activate_page(pvec, page);
+	put_cpu_var(lru_add_new_anon_pvec);
+
+	if (ret)
+		SetPageActive(page);
 }
 
 /*
@@ -407,7 +447,17 @@ static void __lru_cache_add(struct page *page)
 
 	get_page(page);
 	if (!pagevec_add(pvec, page) || PageCompound(page))
-		__pagevec_lru_add(pvec);
+		__pagevec_lru_add(pvec, false);
+	put_cpu_var(lru_add_pvec);
+}
+
+static void __lru_cache_add_new_anon(struct page *page)
+{
+	struct pagevec *pvec = &get_cpu_var(lru_add_new_anon_pvec);
+
+	get_page(page);
+	if (!pagevec_add(pvec, page) || PageCompound(page))
+		__pagevec_lru_add(pvec, true);
 	put_cpu_var(lru_add_pvec);
 }
 
@@ -473,6 +523,11 @@ void lru_cache_add_inactive_or_unevictable(struct page *page,
 		__mod_zone_page_state(page_zone(page), NR_MLOCK,
 				    hpage_nr_pages(page));
 		count_vm_event(UNEVICTABLE_PGMLOCKED);
+	}
+
+	if (PageSwapBacked(page) && !unevictable) {
+		__lru_cache_add_new_anon(page);
+		return;
 	}
 	lru_cache_add(page);
 }
@@ -596,7 +651,11 @@ void lru_add_drain_cpu(int cpu)
 	struct pagevec *pvec = &per_cpu(lru_add_pvec, cpu);
 
 	if (pagevec_count(pvec))
-		__pagevec_lru_add(pvec);
+		__pagevec_lru_add(pvec, false);
+
+	pvec = &per_cpu(lru_add_new_anon_pvec, cpu);
+	if (pagevec_count(pvec))
+		__pagevec_lru_add(pvec, true);
 
 	pvec = &per_cpu(lru_rotate_pvecs, cpu);
 	if (pagevec_count(pvec)) {
@@ -744,6 +803,7 @@ void lru_add_drain_all(void)
 		struct work_struct *work = &per_cpu(lru_add_drain_work, cpu);
 
 		if (pagevec_count(&per_cpu(lru_add_pvec, cpu)) ||
+		    pagevec_count(&per_cpu(lru_add_new_anon_pvec, cpu)) ||
 		    pagevec_count(&per_cpu(lru_rotate_pvecs, cpu)) ||
 		    pagevec_count(&per_cpu(lru_deactivate_file_pvecs, cpu)) ||
 		    pagevec_count(&per_cpu(lru_deactivate_pvecs, cpu)) ||
@@ -928,6 +988,7 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 {
 	enum lru_list lru;
 	int was_unevictable = TestClearPageUnevictable(page);
+	bool new_anon = (bool)arg;
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
@@ -962,8 +1023,18 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 
 	if (page_evictable(page)) {
 		lru = page_lru(page);
+		/*
+		 * Count new_anon page for rotation due to performance reason.
+		 * Previous LRU management algorithm for anonymous page attaches
+		 * a new anonymous page to the active list and it is counted as
+		 * rotation. However, current one attaches a new anonymous page
+		 * to the inactive list so rotation isn't counted. This count
+		 * difference results in difference of file/anon reclaim ratio
+		 * and then performance regression. To workaround it, new_anon
+		 * is counted for rotation here.
+		 */
 		update_page_reclaim_stat(lruvec, page_is_file_cache(page),
-					 PageActive(page));
+					 PageActive(page) | new_anon);
 		if (was_unevictable)
 			count_vm_event(UNEVICTABLE_PGRESCUED);
 	} else {
@@ -982,9 +1053,9 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
  * Add the passed pages to the LRU, then drop the caller's refcount
  * on them.  Reinitialises the caller's pagevec.
  */
-void __pagevec_lru_add(struct pagevec *pvec)
+void __pagevec_lru_add(struct pagevec *pvec, bool new_anon)
 {
-	pagevec_lru_move_fn(pvec, __pagevec_lru_add_fn, NULL);
+	pagevec_lru_move_fn(pvec, __pagevec_lru_add_fn, (void *)new_anon);
 }
 EXPORT_SYMBOL(__pagevec_lru_add);
 

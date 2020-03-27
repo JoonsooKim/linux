@@ -1088,11 +1088,13 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		enum page_references references = PAGEREF_RECLAIM;
 		bool dirty, writeback;
 		unsigned int nr_pages;
+		int file;
 
 		cond_resched();
 
 		page = lru_to_page(page_list);
 		list_del(&page->lru);
+		file = page_is_file_cache(page);
 
 		if (!trylock_page(page))
 			goto keep;
@@ -1223,7 +1225,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		case PAGEREF_ACTIVATE:
 			goto activate_locked;
 		case PAGEREF_KEEP:
-			stat->nr_ref_keep += nr_pages;
+			stat->nr_ref_keep[file] += nr_pages;
 			goto keep_locked;
 		case PAGEREF_RECLAIM:
 		case PAGEREF_RECLAIM_CLEAN:
@@ -1316,7 +1318,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 			 * the rest of the LRU for clean pages and see
 			 * the same dirty pages again (PageReclaim).
 			 */
-			if (page_is_file_cache(page) &&
+			if (file &&
 			    (!current_is_kswapd() || !PageReclaim(page) ||
 			     !test_bit(PGDAT_DIRTY, &pgdat->flags))) {
 				/*
@@ -1460,9 +1462,8 @@ activate_locked:
 			try_to_free_swap(page);
 		VM_BUG_ON_PAGE(PageActive(page), page);
 		if (!PageMlocked(page)) {
-			int type = page_is_file_cache(page);
 			SetPageActive(page);
-			stat->nr_activate[type] += nr_pages;
+			stat->nr_activate[file] += nr_pages;
 			count_memcg_page_event(page, PGACTIVATE);
 			workingset_activation(page);
 		}
@@ -1954,6 +1955,9 @@ shrink_inactive_list(unsigned long nr_to_scan, struct lruvec *lruvec,
 	__count_memcg_events(lruvec_memcg(lruvec), item, nr_reclaimed);
 	reclaim_stat->recent_rotated[0] += stat.nr_activate[0];
 	reclaim_stat->recent_rotated[1] += stat.nr_activate[1];
+
+	/* to mitigate impact on scan ratio due to LRU algorithm change */
+	reclaim_stat->recent_rotated[0] += stat.nr_ref_keep[0];
 
 	move_pages_to_lru(lruvec, &page_list);
 

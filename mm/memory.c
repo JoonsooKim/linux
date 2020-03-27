@@ -3099,6 +3099,12 @@ vm_fault_t do_swap_page(struct vm_fault *vmf)
 	} else {
 		do_page_add_anon_rmap(page, vma, vmf->address, exclusive);
 		mem_cgroup_commit_charge(page, memcg, true, false);
+
+		/*
+		 * To reduce difference of the reclaim ratio caused by LRU
+		 * algorithm change, update reclaim_stat manually.
+		 */
+		update_anon_page_reclaim_stat(page);
 	}
 
 	if (shadow) {

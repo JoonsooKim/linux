@@ -366,7 +366,8 @@ TRACE_EVENT(mm_vmscan_lru_shrink_inactive,
 		__entry->nr_immediate = stat->nr_immediate;
 		__entry->nr_activate0 = stat->nr_activate[0];
 		__entry->nr_activate1 = stat->nr_activate[1];
-		__entry->nr_ref_keep = stat->nr_ref_keep;
+		__entry->nr_ref_keep = stat->nr_ref_keep[0] +
+					stat->nr_ref_keep[1];
 		__entry->nr_unmap_fail = stat->nr_unmap_fail;
 		__entry->priority = priority;
 		__entry->reclaim_flags = trace_reclaim_flags(file);
