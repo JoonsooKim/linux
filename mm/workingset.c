@@ -168,8 +168,20 @@
  * refault distance will immediately activate the refaulting page.
  */
 
+/*
+ * memcg_tag will be used to check the previous owner of the page.
+ * Since we don't have enough spare bits in shadow entry, just a few
+ * bits are used to approximate the previous owner.
+ */
+#if BITS_PER_LONG == 32
+#define PAGE_MEMCG_TAG_SHIFT 4
+#else
+#define PAGE_MEMCG_TAG_SHIFT 8
+#endif
+
 #define EVICTION_SHIFT	((BITS_PER_LONG - BITS_PER_XA_VALUE) +	\
-			 1 + NODES_SHIFT + MEM_CGROUP_ID_SHIFT)
+			 1 + NODES_SHIFT + MEM_CGROUP_ID_SHIFT + \
+			 PAGE_MEMCG_TAG_SHIFT)
 #define EVICTION_MASK	(~0UL >> EVICTION_SHIFT)
 
 /*
@@ -182,11 +194,12 @@
  */
 static unsigned int bucket_order __read_mostly;
 
-static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
-			 bool workingset)
+static void *pack_shadow(int memcgid, int page_memcg_tag, pg_data_t *pgdat,
+			unsigned long eviction, bool workingset)
 {
 	eviction >>= bucket_order;
 	eviction &= EVICTION_MASK;
+	eviction = (eviction << PAGE_MEMCG_TAG_SHIFT) | page_memcg_tag;
 	eviction = (eviction << MEM_CGROUP_ID_SHIFT) | memcgid;
 	eviction = (eviction << NODES_SHIFT) | pgdat->node_id;
 	eviction = (eviction << 1) | workingset;
@@ -194,11 +207,12 @@ static void *pack_shadow(int memcgid, pg_data_t *pgdat, unsigned long eviction,
 	return xa_mk_value(eviction);
 }
 
-static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
-			  unsigned long *evictionp, bool *workingsetp)
+static void unpack_shadow(void *shadow, int *memcgidp, int *page_memcg_tagp,
+			pg_data_t **pgdat, unsigned long *evictionp,
+			bool *workingsetp)
 {
 	unsigned long entry = xa_to_value(shadow);
-	int memcgid, nid;
+	int memcgid, page_memcg_tag, nid;
 	bool workingset;
 
 	workingset = entry & 1;
@@ -207,8 +221,11 @@ static void unpack_shadow(void *shadow, int *memcgidp, pg_data_t **pgdat,
 	entry >>= NODES_SHIFT;
 	memcgid = entry & ((1UL << MEM_CGROUP_ID_SHIFT) - 1);
 	entry >>= MEM_CGROUP_ID_SHIFT;
+	page_memcg_tag = entry & ((1UL << PAGE_MEMCG_TAG_SHIFT) - 1);
+	entry >>= PAGE_MEMCG_TAG_SHIFT;
 
 	*memcgidp = memcgid;
+	*page_memcg_tagp = page_memcg_tag;
 	*pgdat = NODE_DATA(nid);
 	*evictionp = entry << bucket_order;
 	*workingsetp = workingset;
@@ -248,9 +265,9 @@ void *workingset_eviction(struct page *page, struct mem_cgroup *target_memcg)
 {
 	struct pglist_data *pgdat = page_pgdat(page);
 	bool file = page_is_file_cache(page);
+	int memcgid, page_memcg_tag;
 	unsigned long eviction;
 	struct lruvec *lruvec;
-	int memcgid;
 
 	/* Page is fully exclusive and pins page->mem_cgroup */
 	VM_BUG_ON_PAGE(PageLRU(page), page);
@@ -262,8 +279,11 @@ void *workingset_eviction(struct page *page, struct mem_cgroup *target_memcg)
 	lruvec = mem_cgroup_lruvec(target_memcg, pgdat);
 	/* XXX: target_memcg can be NULL, go through lruvec */
 	memcgid = mem_cgroup_id(lruvec_memcg(lruvec));
+	page_memcg_tag = mem_cgroup_id(page_memcg(page));
+	page_memcg_tag &= (1UL << PAGE_MEMCG_TAG_SHIFT) - 1;
 	eviction = atomic_long_read(&lruvec->inactive_age[file]);
-	return pack_shadow(memcgid, pgdat, eviction, PageWorkingset(page));
+	return pack_shadow(memcgid, page_memcg_tag, pgdat, eviction,
+			PageWorkingset(page));
 }
 
 /**
@@ -281,6 +301,7 @@ void workingset_refault(struct page *page, void *shadow)
 	struct mem_cgroup *eviction_memcg;
 	struct lruvec *eviction_lruvec;
 	unsigned long refault_distance;
+	int memcgid, page_memcg_tag;
 	struct pglist_data *pgdat;
 	struct mem_cgroup *memcg;
 	unsigned long eviction;
@@ -288,9 +309,9 @@ void workingset_refault(struct page *page, void *shadow)
 	unsigned long refault;
 	unsigned long active;
 	bool workingset;
-	int memcgid;
 
-	unpack_shadow(shadow, &memcgid, &pgdat, &eviction, &workingset);
+	unpack_shadow(shadow, &memcgid, &page_memcg_tag,
+			&pgdat, &eviction, &workingset);
 
 	rcu_read_lock();
 	/*
