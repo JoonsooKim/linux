@@ -307,6 +307,7 @@ struct vma_swap_readahead {
 };
 
 /* linux/mm/workingset.c */
+bool shadow_from_memcg(void *shadow, struct mem_cgroup *memcg);
 void *workingset_eviction(struct page *page, struct mem_cgroup *target_memcg);
 void workingset_refault(struct page *page, void *shadow);
 void workingset_activation(struct page *page);
@@ -410,7 +411,8 @@ extern void show_swap_cache_info(void);
 extern int add_to_swap(struct page *page);
 extern void *get_shadow_from_swap_cache(swp_entry_t entry);
 extern int add_to_swap_cache(struct page *page, swp_entry_t entry,
-			struct vm_area_struct *vma, gfp_t gfp, void **shadowp);
+			struct vm_area_struct *vma, gfp_t gfp,
+			void **shadowp, bool readahead);
 extern int __add_to_swap_cache(struct page *page, swp_entry_t entry);
 extern void __delete_from_swap_cache(struct page *page,
 			swp_entry_t entry, void *shadow);
@@ -425,7 +427,7 @@ extern struct page *read_swap_cache_async(swp_entry_t, gfp_t,
 			bool do_poll);
 extern struct page *__read_swap_cache_async(swp_entry_t, gfp_t,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated);
+			bool *new_page_allocated, bool readahead);
 extern struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t flag,
 				struct vm_fault *vmf);
 extern struct page *swapin_readahead(swp_entry_t entry, gfp_t flag,
@@ -573,7 +575,8 @@ static inline void *get_shadow_from_swap_cache(swp_entry_t entry)
 }
 
 static inline int add_to_swap_cache(struct page *page, swp_entry_t entry,
-			struct vm_area_struct *vma, gfp_t gfp, void **shadowp)
+				struct vm_area_struct *vma, gfp_t gfp,
+				void **shadowp, bool readahead)
 {
 	return -1;
 }

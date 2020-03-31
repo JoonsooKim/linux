@@ -126,7 +126,8 @@ void *get_shadow_from_swap_cache(swp_entry_t entry)
  * but sets SwapCache flag and private instead of mapping and index.
  */
 int add_to_swap_cache(struct page *page, swp_entry_t entry,
-			struct vm_area_struct *vma, gfp_t gfp, void **shadowp)
+			struct vm_area_struct *vma, gfp_t gfp,
+			void **shadowp, bool readahead)
 {
 	struct address_space *address_space = swap_address_space(entry);
 	pgoff_t idx = swp_offset(entry);
@@ -142,6 +143,23 @@ int add_to_swap_cache(struct page *page, swp_entry_t entry,
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON_PAGE(PageSwapCache(page), page);
 	VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
+
+	if (readahead) {
+		void *shadow = get_shadow_from_swap_cache(entry);
+
+		/*
+		 * In readahead case, check the memcgid of the shadow entry
+		 * in order to stop to readahead other's page
+		 */
+		if (shadow) {
+			memcg = get_mem_cgroup_from_mm(mm);
+			if (memcg && !shadow_from_memcg(shadow, memcg)) {
+				mem_cgroup_put(memcg);
+				return -EINVAL;
+			}
+			mem_cgroup_put(memcg);
+		}
+	}
 
 	page_ref_add(page, nr);
 	/* PageSwapCache() prevent the page from being re-charged */
@@ -253,7 +271,7 @@ int add_to_swap(struct page *page)
 	 * Add it to the swap cache.
 	 */
 	err = add_to_swap_cache(page, entry, NULL,
-			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, NULL);
+			__GFP_HIGH|__GFP_NOMEMALLOC|__GFP_NOWARN, NULL, false);
 	if (err)
 		/*
 		 * add_to_swap_cache() doesn't return -EEXIST, so we can safely
@@ -402,7 +420,7 @@ struct page *lookup_swap_cache(swp_entry_t entry, struct vm_area_struct *vma,
 
 struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 			struct vm_area_struct *vma, unsigned long addr,
-			bool *new_page_allocated)
+			bool *new_page_allocated, bool readahead)
 {
 	struct page *found_page = NULL, *new_page = NULL;
 	struct swap_info_struct *si;
@@ -465,7 +483,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		__SetPageSwapBacked(new_page);
 		shadow = NULL;
 		err = add_to_swap_cache(new_page, entry, vma,
-				gfp_mask & GFP_KERNEL, &shadow);
+				gfp_mask & GFP_KERNEL, &shadow, readahead);
 		if (likely(!err)) {
 			/* Initiate read into locked page */
 			SetPageWorkingset(new_page);
@@ -481,7 +499,7 @@ struct page *__read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 		 * clear SWAP_HAS_CACHE flag.
 		 */
 		put_swap_page(new_page, entry);
-	} while (err != -ENOMEM);
+	} while (err != -ENOMEM && err != -EINVAL);
 
 	if (new_page)
 		put_page(new_page);
@@ -499,7 +517,7 @@ struct page *read_swap_cache_async(swp_entry_t entry, gfp_t gfp_mask,
 {
 	bool page_was_allocated;
 	struct page *retpage = __read_swap_cache_async(entry, gfp_mask,
-			vma, addr, &page_was_allocated);
+			vma, addr, &page_was_allocated, false);
 
 	if (page_was_allocated)
 		swap_readpage(retpage, do_poll);
@@ -624,7 +642,7 @@ struct page *swap_cluster_readahead(swp_entry_t entry, gfp_t gfp_mask,
 		/* Ok, do the async read-ahead now */
 		page = __read_swap_cache_async(
 			swp_entry(swp_type(entry), offset),
-			gfp_mask, vma, addr, &page_allocated);
+			gfp_mask, vma, addr, &page_allocated, true);
 		if (!page)
 			continue;
 		if (page_allocated) {
@@ -796,7 +814,7 @@ static struct page *swap_vma_readahead(swp_entry_t fentry, gfp_t gfp_mask,
 		if (unlikely(non_swap_entry(entry)))
 			continue;
 		page = __read_swap_cache_async(entry, gfp_mask, vma,
-					       vmf->address, &page_allocated);
+					vmf->address, &page_allocated, true);
 		if (!page)
 			continue;
 		if (page_allocated) {

@@ -231,6 +231,22 @@ static void unpack_shadow(void *shadow, int *memcgidp, int *page_memcg_tagp,
 	*workingsetp = workingset;
 }
 
+bool shadow_from_memcg(void *shadow, struct mem_cgroup *memcg)
+{
+	int memcgid, page_memcg_tag;
+	struct pglist_data *pgdat;
+	unsigned long eviction;
+	bool workingset;
+	int memcg_tag;
+
+	unpack_shadow(shadow, &memcgid, &page_memcg_tag,
+			&pgdat, &eviction, &workingset);
+	memcg_tag = mem_cgroup_id(memcg);
+	memcg_tag &= (1UL << PAGE_MEMCG_TAG_SHIFT) - 1;
+
+	return memcg_tag == page_memcg_tag;
+}
+
 static void advance_inactive_age(struct mem_cgroup *memcg, pg_data_t *pgdat,
 				bool file)
 {

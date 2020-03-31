@@ -1371,7 +1371,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 
 	if (add_to_swap_cache(page, swap, NULL,
 			__GFP_HIGH | __GFP_NOMEMALLOC | __GFP_NOWARN,
-			NULL) == 0) {
+			NULL, false) == 0) {
 		spin_lock_irq(&info->lock);
 		shmem_recalc_inode(inode);
 		info->swapped++;
