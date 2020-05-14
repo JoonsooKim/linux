@@ -1613,16 +1613,21 @@ static struct page *new_non_cma_page(struct page *page, unsigned long private)
 	if (PageHighMem(page))
 		gfp_mask |= __GFP_HIGHMEM;
 
-#ifdef CONFIG_HUGETLB_PAGE
 	if (PageHuge(page)) {
 		struct hstate *h = page_hstate(page);
+		struct alloc_control ac = {
+			.nid = nid,
+			.nmask = NULL,
+			.gfp_mask = gfp_mask,
+		};
+
 		/*
 		 * We don't want to dequeue from the pool because pool pages will
 		 * mostly be from the CMA region.
 		 */
-		return alloc_migrate_huge_page(h, gfp_mask, nid, NULL);
+		return alloc_migrate_huge_page(h, &ac);
 	}
-#endif
+
 	if (PageTransHuge(page)) {
 		struct page *thp;
 		/*
