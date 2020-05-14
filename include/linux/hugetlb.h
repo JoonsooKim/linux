@@ -14,6 +14,7 @@
 struct ctl_table;
 struct user_struct;
 struct mmu_gather;
+struct alloc_control;
 
 #ifndef is_hugepd
 typedef struct { unsigned long pd; } hugepd_t;
@@ -502,15 +503,16 @@ struct huge_bootmem_page {
 	struct hstate *hstate;
 };
 
-struct page *alloc_huge_page(struct vm_area_struct *vma,
-				unsigned long addr, int avoid_reserve);
-struct page *alloc_huge_page_node(struct hstate *h, int nid);
-struct page *alloc_huge_page_nodemask(struct hstate *h, int preferred_nid,
-				nodemask_t *nmask);
+struct page *alloc_migrate_huge_page(struct hstate *h,
+				struct alloc_control *ac);
+struct page *alloc_huge_page_node(struct hstate *h,
+				struct alloc_control *ac);
+struct page *alloc_huge_page_nodemask(struct hstate *h,
+				struct alloc_control *ac);
 struct page *alloc_huge_page_vma(struct hstate *h, struct vm_area_struct *vma,
 				unsigned long address);
-struct page *alloc_migrate_huge_page(struct hstate *h, gfp_t gfp_mask,
-				     int nid, nodemask_t *nmask);
+struct page *alloc_huge_page(struct vm_area_struct *vma,
+				unsigned long addr, int avoid_reserve);
 int huge_add_to_page_cache(struct page *page, struct address_space *mapping,
 			pgoff_t idx);
 
@@ -752,20 +754,14 @@ static inline void huge_ptep_modify_prot_commit(struct vm_area_struct *vma,
 #else	/* CONFIG_HUGETLB_PAGE */
 struct hstate {};
 
-static inline struct page *alloc_huge_page(struct vm_area_struct *vma,
-					   unsigned long addr,
-					   int avoid_reserve)
-{
-	return NULL;
-}
-
-static inline struct page *alloc_huge_page_node(struct hstate *h, int nid)
+static inline struct page *
+alloc_huge_page_node(struct hstate *h, struct alloc_control *ac)
 {
 	return NULL;
 }
 
 static inline struct page *
-alloc_huge_page_nodemask(struct hstate *h, int preferred_nid, nodemask_t *nmask)
+alloc_huge_page_nodemask(struct hstate *h, struct alloc_control *ac)
 {
 	return NULL;
 }
@@ -773,6 +769,13 @@ alloc_huge_page_nodemask(struct hstate *h, int preferred_nid, nodemask_t *nmask)
 static inline struct page *alloc_huge_page_vma(struct hstate *h,
 					       struct vm_area_struct *vma,
 					       unsigned long address)
+{
+	return NULL;
+}
+
+static inline struct page *alloc_huge_page(struct vm_area_struct *vma,
+					   unsigned long addr,
+					   int avoid_reserve)
 {
 	return NULL;
 }
