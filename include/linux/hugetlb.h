@@ -503,8 +503,6 @@ struct huge_bootmem_page {
 	struct hstate *hstate;
 };
 
-struct page *alloc_migrate_huge_page(struct hstate *h,
-				struct alloc_control *ac);
 struct page *alloc_huge_page_nodemask(struct hstate *h,
 				struct alloc_control *ac);
 struct page *alloc_huge_page_vma(struct hstate *h, struct vm_area_struct *vma,
