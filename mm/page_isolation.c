@@ -298,9 +298,12 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 	return pfn < end_pfn ? -EBUSY : 0;
 }
 
-struct page *alloc_migrate_target(struct page *page, unsigned long private)
+struct page *alloc_migrate_target(struct page *page, struct alloc_control *__ac)
 {
-	int nid = page_to_nid(page);
+	struct alloc_control ac = {
+		.nid = page_to_nid(page),
+		.nmask = &node_states[N_MEMORY],
+	};
 
-	return new_page_nodemask(page, nid, &node_states[N_MEMORY]);
+	return new_page_nodemask(page, &ac);
 }

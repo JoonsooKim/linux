@@ -1232,10 +1232,11 @@ static unsigned long scan_movable_pages(unsigned long start, unsigned long end)
 	return 0;
 }
 
-static struct page *new_node_page(struct page *page, unsigned long private)
+static struct page *new_node_page(struct page *page, struct alloc_control *__ac)
 {
 	int nid = page_to_nid(page);
 	nodemask_t nmask = node_states[N_MEMORY];
+	struct alloc_control ac = {0};
 
 	/*
 	 * try to allocate from a different node but reuse this node if there
@@ -1246,7 +1247,9 @@ static struct page *new_node_page(struct page *page, unsigned long private)
 	if (nodes_empty(nmask))
 		node_set(nid, nmask);
 
-	return new_page_nodemask(page, nid, &nmask);
+	ac.nid = nid;
+	ac.nmask = &nmask;
+	return new_page_nodemask(page, &ac);
 }
 
 static int
@@ -1310,7 +1313,7 @@ do_migrate_range(unsigned long start_pfn, unsigned long end_pfn)
 	}
 	if (!list_empty(&source)) {
 		/* Allocate a new page from the nearest neighbor node */
-		ret = migrate_pages(&source, new_node_page, NULL, 0,
+		ret = migrate_pages(&source, new_node_page, NULL, NULL,
 					MIGRATE_SYNC, MR_MEMORY_HOTPLUG);
 		if (ret) {
 			list_for_each_entry(page, &source, lru) {
