@@ -1561,9 +1561,9 @@ splitmap:
  * from the isolated freelists in the block we are migrating to.
  */
 static struct page *compaction_alloc(struct page *migratepage,
-					unsigned long data)
+					struct alloc_control *ac)
 {
-	struct compact_control *cc = (struct compact_control *)data;
+	struct compact_control *cc = (struct compact_control *)ac->private;
 	struct page *freepage;
 
 	if (list_empty(&cc->freepages)) {
@@ -1585,9 +1585,9 @@ static struct page *compaction_alloc(struct page *migratepage,
  * freelist.  All pages on the freelist are from the same zone, so there is no
  * special handling needed for NUMA.
  */
-static void compaction_free(struct page *page, unsigned long data)
+static void compaction_free(struct page *page, struct alloc_control *ac)
 {
-	struct compact_control *cc = (struct compact_control *)data;
+	struct compact_control *cc = (struct compact_control *)ac->private;
 
 	list_add(&page->lru, &cc->freepages);
 	cc->nr_freepages++;
@@ -2095,6 +2095,9 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 	unsigned long last_migrated_pfn;
 	const bool sync = cc->mode != MIGRATE_ASYNC;
 	bool update_cached;
+	struct alloc_control alloc_control = {
+		.private = (unsigned long)cc,
+	};
 
 	/*
 	 * These counters track activities during zone compaction.  Initialize
@@ -2212,8 +2215,8 @@ compact_zone(struct compact_control *cc, struct capture_control *capc)
 		}
 
 		err = migrate_pages(&cc->migratepages, compaction_alloc,
-				compaction_free, (unsigned long)cc, cc->mode,
-				MR_COMPACTION);
+				compaction_free, &alloc_control,
+				cc->mode, MR_COMPACTION);
 
 		trace_mm_compaction_migratepages(cc->nr_migratepages, err,
 							&cc->migratepages);

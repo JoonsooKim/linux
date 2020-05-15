@@ -1183,7 +1183,7 @@ out:
  */
 static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 				   free_page_t put_new_page,
-				   unsigned long private, struct page *page,
+				   struct alloc_control *ac, struct page *page,
 				   int force, enum migrate_mode mode,
 				   enum migrate_reason reason)
 {
@@ -1206,7 +1206,7 @@ static ICE_noinline int unmap_and_move(new_page_t get_new_page,
 		goto out;
 	}
 
-	newpage = get_new_page(page, private);
+	newpage = get_new_page(page, ac);
 	if (!newpage)
 		return -ENOMEM;
 
@@ -1266,7 +1266,7 @@ out:
 		}
 put_new:
 		if (put_new_page)
-			put_new_page(newpage, private);
+			put_new_page(newpage, ac);
 		else
 			put_page(newpage);
 	}
@@ -1293,9 +1293,9 @@ put_new:
  * will wait in the page fault for migration to complete.
  */
 static int unmap_and_move_huge_page(new_page_t get_new_page,
-				free_page_t put_new_page, unsigned long private,
-				struct page *hpage, int force,
-				enum migrate_mode mode, int reason)
+			free_page_t put_new_page, struct alloc_control *ac,
+			struct page *hpage, int force,
+			enum migrate_mode mode, int reason)
 {
 	int rc = -EAGAIN;
 	int page_was_mapped = 0;
@@ -1315,7 +1315,7 @@ static int unmap_and_move_huge_page(new_page_t get_new_page,
 		return -ENOSYS;
 	}
 
-	new_hpage = get_new_page(hpage, private);
+	new_hpage = get_new_page(hpage, ac);
 	if (!new_hpage)
 		return -ENOMEM;
 
@@ -1402,7 +1402,7 @@ out:
 	 * isolation.
 	 */
 	if (put_new_page)
-		put_new_page(new_hpage, private);
+		put_new_page(new_hpage, ac);
 	else
 		putback_active_hugepage(new_hpage);
 
@@ -1431,7 +1431,7 @@ out:
  * Returns the number of pages that were not migrated, or an error code.
  */
 int migrate_pages(struct list_head *from, new_page_t get_new_page,
-		free_page_t put_new_page, unsigned long private,
+		free_page_t put_new_page, struct alloc_control *ac,
 		enum migrate_mode mode, int reason)
 {
 	int retry = 1;
@@ -1455,11 +1455,11 @@ retry:
 
 			if (PageHuge(page))
 				rc = unmap_and_move_huge_page(get_new_page,
-						put_new_page, private, page,
+						put_new_page, ac, page,
 						pass > 2, mode, reason);
 			else
 				rc = unmap_and_move(get_new_page, put_new_page,
-						private, page, pass > 2, mode,
+						ac, page, pass > 2, mode,
 						reason);
 
 			switch(rc) {
@@ -1519,8 +1519,7 @@ out:
 	return rc;
 }
 
-struct page *new_page_nodemask(struct page *page,
-				int preferred_nid, nodemask_t *nodemask)
+struct page *new_page_nodemask(struct page *page, struct alloc_control *ac)
 {
 	gfp_t gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL;
 	unsigned int order = 0;
@@ -1528,12 +1527,12 @@ struct page *new_page_nodemask(struct page *page,
 
 	if (PageHuge(page)) {
 		struct hstate *h = page_hstate(page);
-		struct alloc_control ac = {
-			.nid = preferred_nid,
-			.nmask = nodemask,
+		struct alloc_control __ac = {
+			.nid = ac->nid,
+			.nmask = ac->nmask,
 		};
 
-		return alloc_huge_page_nodemask(h, &ac);
+		return alloc_huge_page_nodemask(h, &__ac);
 	}
 
 	if (PageTransHuge(page)) {
@@ -1544,8 +1543,7 @@ struct page *new_page_nodemask(struct page *page,
 	if (PageHighMem(page) || (zone_idx(page_zone(page)) == ZONE_MOVABLE))
 		gfp_mask |= __GFP_HIGHMEM;
 
-	new_page = __alloc_pages_nodemask(gfp_mask, order,
-				preferred_nid, nodemask);
+	new_page = __alloc_pages_nodemask(gfp_mask, order, ac->nid, ac->nmask);
 
 	if (new_page && PageTransHuge(new_page))
 		prep_transhuge_page(new_page);
@@ -1570,8 +1568,11 @@ static int do_move_pages_to_node(struct mm_struct *mm,
 		struct list_head *pagelist, int node)
 {
 	int err;
+	struct alloc_control ac = {
+		.nid = node,
+	};
 
-	err = migrate_pages(pagelist, alloc_new_node_page, NULL, node,
+	err = migrate_pages(pagelist, alloc_new_node_page, NULL, &ac,
 			MIGRATE_SYNC, MR_SYSCALL);
 	if (err)
 		putback_movable_pages(pagelist);
@@ -1961,12 +1962,11 @@ static bool migrate_balanced_pgdat(struct pglist_data *pgdat,
 }
 
 static struct page *alloc_misplaced_dst_page(struct page *page,
-					   unsigned long data)
+					struct alloc_control *ac)
 {
-	int nid = (int) data;
 	struct page *newpage;
 
-	newpage = __alloc_pages_node(nid,
+	newpage = __alloc_pages_node(ac->nid,
 					 (GFP_HIGHUSER_MOVABLE |
 					  __GFP_THISNODE | __GFP_NOMEMALLOC |
 					  __GFP_NORETRY | __GFP_NOWARN) &
@@ -2031,6 +2031,9 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	int isolated;
 	int nr_remaining;
 	LIST_HEAD(migratepages);
+	struct alloc_control ac = {
+		.nid = node,
+	};
 
 	/*
 	 * Don't migrate file pages that are mapped in multiple processes
@@ -2053,7 +2056,7 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 
 	list_add(&page->lru, &migratepages);
 	nr_remaining = migrate_pages(&migratepages, alloc_misplaced_dst_page,
-				     NULL, node, MIGRATE_ASYNC,
+				     NULL, &ac, MIGRATE_ASYNC,
 				     MR_NUMA_MISPLACED);
 	if (nr_remaining) {
 		if (!list_empty(&migratepages)) {

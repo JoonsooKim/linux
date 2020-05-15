@@ -2,6 +2,8 @@
 #ifndef __LINUX_PAGEISOLATION_H
 #define __LINUX_PAGEISOLATION_H
 
+struct alloc_control;
+
 #ifdef CONFIG_MEMORY_ISOLATION
 static inline bool has_isolate_pageblock(struct zone *zone)
 {
@@ -60,6 +62,6 @@ undo_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 			int isol_flags);
 
-struct page *alloc_migrate_target(struct page *page, unsigned long private);
+struct page *alloc_migrate_target(struct page *page, struct alloc_control *ac);
 
 #endif

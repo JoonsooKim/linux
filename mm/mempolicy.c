@@ -1066,12 +1066,12 @@ static int migrate_page_add(struct page *page, struct list_head *pagelist,
 }
 
 /* page allocation callback for NUMA node migration */
-struct page *alloc_new_node_page(struct page *page, unsigned long node)
+struct page *alloc_new_node_page(struct page *page, struct alloc_control *__ac)
 {
 	if (PageHuge(page)) {
 		struct hstate *h = page_hstate(page);
 		struct alloc_control ac = {
-			.nid = node,
+			.nid = __ac->nid,
 			.nmask = NULL,
 			.thisnode = true,
 		};
@@ -1080,7 +1080,7 @@ struct page *alloc_new_node_page(struct page *page, unsigned long node)
 	} else if (PageTransHuge(page)) {
 		struct page *thp;
 
-		thp = alloc_pages_node(node,
+		thp = alloc_pages_node(__ac->nid,
 			(GFP_TRANSHUGE | __GFP_THISNODE),
 			HPAGE_PMD_ORDER);
 		if (!thp)
@@ -1088,7 +1088,7 @@ struct page *alloc_new_node_page(struct page *page, unsigned long node)
 		prep_transhuge_page(thp);
 		return thp;
 	} else
-		return __alloc_pages_node(node, GFP_HIGHUSER_MOVABLE |
+		return __alloc_pages_node(__ac->nid, GFP_HIGHUSER_MOVABLE |
 						    __GFP_THISNODE, 0);
 }
 
@@ -1102,6 +1102,9 @@ static int migrate_to_node(struct mm_struct *mm, int source, int dest,
 	nodemask_t nmask;
 	LIST_HEAD(pagelist);
 	int err = 0;
+	struct alloc_control ac = {
+		.nid = dest,
+	};
 
 	nodes_clear(nmask);
 	node_set(source, nmask);
@@ -1116,7 +1119,7 @@ static int migrate_to_node(struct mm_struct *mm, int source, int dest,
 			flags | MPOL_MF_DISCONTIG_OK, &pagelist);
 
 	if (!list_empty(&pagelist)) {
-		err = migrate_pages(&pagelist, alloc_new_node_page, NULL, dest,
+		err = migrate_pages(&pagelist, alloc_new_node_page, NULL, &ac,
 					MIGRATE_SYNC, MR_SYSCALL);
 		if (err)
 			putback_movable_pages(&pagelist);
@@ -1237,10 +1240,11 @@ int do_migrate_pages(struct mm_struct *mm, const nodemask_t *from,
  * list of pages handed to migrate_pages()--which is how we get here--
  * is in virtual address order.
  */
-static struct page *new_page(struct page *page, unsigned long start)
+static struct page *new_page(struct page *page, struct alloc_control *ac)
 {
 	struct vm_area_struct *vma;
 	unsigned long uninitialized_var(address);
+	unsigned long start = ac->private;
 
 	vma = find_vma(current->mm, start);
 	while (vma) {
@@ -1283,7 +1287,7 @@ int do_migrate_pages(struct mm_struct *mm, const nodemask_t *from,
 	return -ENOSYS;
 }
 
-static struct page *new_page(struct page *page, unsigned long start)
+static struct page *new_page(struct page *page, struct alloc_control *ac)
 {
 	return NULL;
 }
@@ -1299,6 +1303,7 @@ static long do_mbind(unsigned long start, unsigned long len,
 	int err;
 	int ret;
 	LIST_HEAD(pagelist);
+	struct alloc_control ac = {0};
 
 	if (flags & ~(unsigned long)MPOL_MF_VALID)
 		return -EINVAL;
@@ -1374,8 +1379,9 @@ static long do_mbind(unsigned long start, unsigned long len,
 
 		if (!list_empty(&pagelist)) {
 			WARN_ON_ONCE(flags & MPOL_MF_LAZY);
+			ac.private = start;
 			nr_failed = migrate_pages(&pagelist, new_page, NULL,
-				start, MIGRATE_SYNC, MR_MEMPOLICY_MBIND);
+				&ac, MIGRATE_SYNC, MR_MEMPOLICY_MBIND);
 			if (nr_failed)
 				putback_movable_pages(&pagelist);
 		}
