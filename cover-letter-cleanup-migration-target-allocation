@@ -1,0 +1,24 @@
+clean-up the migration target allocation functions
+
+This patchset clean-up the migration target allocation functions.
+
+* Changes on v2
+- add acked-by tags
+- fix missing compound_head() call for patch #3
+- remove thisnode field on alloc_control and use __GFP_THISNODE directly
+- fix missing __gfp_mask setup for patch
+"mm/hugetlb: do not modify user provided gfp_mask"
+
+* Cover-letter
+
+Contributions of this patchset are:
+1. unify two hugetlb alloc functions. As a result, one is remained.
+2. make one external hugetlb alloc function to internal one.
+3. unify three functions for migration target allocation.
+
+The patchset is based on next-20200526.
+The patchset is available on:
+
+https://github.com/JoonsooKim/linux/tree/cleanup-migration-target-allocation-v2.00-next-20200526
+
+Thanks.
