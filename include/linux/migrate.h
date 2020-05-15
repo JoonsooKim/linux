@@ -40,8 +40,8 @@ extern int migrate_page(struct address_space *mapping,
 			enum migrate_mode mode);
 extern int migrate_pages(struct list_head *l, new_page_t new, free_page_t free,
 		struct alloc_control *ac, enum migrate_mode mode, int reason);
-extern struct page *new_page_nodemask(struct page *page,
-		struct alloc_control *ac);
+extern struct page *alloc_migration_target(struct page *page,
+					struct alloc_control *ac);
 extern int isolate_movable_page(struct page *page, isolate_mode_t mode);
 extern void putback_movable_page(struct page *page);
 
@@ -60,7 +60,7 @@ static inline int migrate_pages(struct list_head *l, new_page_t new,
 			free_page_t free, struct alloc_control *ac,
 			enum migrate_mode mode, int reason)
 	{ return -ENOSYS; }
-static inline struct page *new_page_nodemask(struct page *page,
+static inline struct page *alloc_migration_target(struct page *page,
 		struct alloc_control *ac)
 	{ return NULL; }
 static inline int isolate_movable_page(struct page *page, isolate_mode_t mode)

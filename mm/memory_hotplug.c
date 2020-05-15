@@ -1249,7 +1249,8 @@ static struct page *new_node_page(struct page *page, struct alloc_control *__ac)
 
 	ac.nid = nid;
 	ac.nmask = &nmask;
-	return new_page_nodemask(page, &ac);
+	ac.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL;
+	return alloc_migration_target(page, &ac);
 }
 
 static int
