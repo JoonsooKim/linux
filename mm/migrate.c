@@ -1590,9 +1590,10 @@ static int do_move_pages_to_node(struct mm_struct *mm,
 	int err;
 	struct alloc_control ac = {
 		.nid = node,
+		.gfp_mask = GFP_HIGHUSER_MOVABLE | __GFP_THISNODE,
 	};
 
-	err = migrate_pages(pagelist, alloc_new_node_page, NULL, &ac,
+	err = migrate_pages(pagelist, alloc_migration_target, NULL, &ac,
 			MIGRATE_SYNC, MR_SYSCALL);
 	if (err)
 		putback_movable_pages(pagelist);
