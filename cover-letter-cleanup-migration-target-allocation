@@ -1,0 +1,15 @@
+clean-up the migration target allocation functions
+
+This patchset clean-up the migration target allocation functions.
+
+Contributions of this patchset are:
+1. unify two hugetlb alloc functions. As a result, one is remained.
+2. make one external hugetlb alloc function to internal one.
+3. unify three functions for migration target allocation.
+
+The patchset is based on next-20200515.
+The patchset is available on:
+
+https://github.com/JoonsooKim/linux/tree/cleanup-migration-target-allocation-v1.00-next-20200515
+
+Thanks.
