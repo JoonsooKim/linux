@@ -1,0 +1,43 @@
+clean-up the migration target allocation functions
+
+This patchset clean-up the migration target allocation functions.
+
+* Changes on v5
+- remove new_non_cma_page() related patches
+(implementation for memalloc_nocma_{save,restore} has a critical bug that
+cannot exclude CMA memory in some cases so fixing them should go first)
+- introduce a wrapper to handle gfp_mask for hugetlb use it
+
+* Changes on v4
+- use full gfp_mask
+- use memalloc_nocma_{save,restore} to exclude CMA memory
+- separate __GFP_RECLAIM handling for THP allocation
+- remove more wrapper functions
+
+* Changes on v3
+- As Vlastimil suggested, do not introduce alloc_control for hugetlb functions
+- do not change the signature of migrate_pages()
+- rename alloc_control to migration_target_control
+
+* Changes on v2
+- add acked-by tags
+- fix missing compound_head() call for patch #3
+- remove thisnode field on alloc_control and use __GFP_THISNODE directly
+- fix missing __gfp_mask setup for patch
+"mm/hugetlb: do not modify user provided gfp_mask"
+
+* Cover-letter
+
+Contributions of this patchset are:
+1. unify two hugetlb alloc functions. As a result, one is remained.
+2. make one external hugetlb alloc function to internal one.
+3. unify three functions for migration target allocation.
+
+The patchset is based on next-20200703 + revert following commits.
+ddc017c727e429488cccd401a7794c8152e50a5b~1..583c2617fd3244fff79ba3b445964884c5cd7780
+
+The patchset is available on:
+
+https://github.com/JoonsooKim/linux/tree/cleanup-migration-target-allocation-v5.00-next-20200703
+
+Thanks.
