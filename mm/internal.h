@@ -619,6 +619,8 @@ struct alloc_control {
 	nodemask_t *nmask;
 	gfp_t gfp_mask;
 	bool skip_cma;
+
+	gfp_t __gfp_mask;	/* Used internally in API implementation */
 };
 
 #endif	/* __MM_INTERNAL_H */
