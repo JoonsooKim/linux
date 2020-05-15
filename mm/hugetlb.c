@@ -1034,13 +1034,19 @@ static void enqueue_huge_page(struct hstate *h, struct page *page)
 	h->free_huge_pages_node[nid]++;
 }
 
-static struct page *dequeue_huge_page_node_exact(struct hstate *h, int nid)
+static struct page *dequeue_huge_page_node_exact(struct hstate *h,
+						int nid, bool skip_cma)
 {
 	struct page *page;
 
-	list_for_each_entry(page, &h->hugepage_freelists[nid], lru)
+	list_for_each_entry(page, &h->hugepage_freelists[nid], lru) {
+		if (skip_cma && is_migrate_cma_page(page))
+			continue;
+
 		if (!PageHWPoison(page))
 			break;
+	}
+
 	/*
 	 * if 'non-isolated free hugepage' not found on the list,
 	 * the allocation fails.
@@ -1081,7 +1087,7 @@ retry_cpuset:
 			continue;
 		node = zone_to_nid(zone);
 
-		page = dequeue_huge_page_node_exact(h, node);
+		page = dequeue_huge_page_node_exact(h, node, ac->skip_cma);
 		if (page)
 			return page;
 	}
@@ -1938,7 +1944,7 @@ out_unlock:
 	return page;
 }
 
-struct page *alloc_migrate_huge_page(struct hstate *h,
+static struct page *alloc_migrate_huge_page(struct hstate *h,
 				struct alloc_control *ac)
 {
 	struct page *page;
@@ -1999,6 +2005,13 @@ struct page *alloc_huge_page_nodemask(struct hstate *h,
 		}
 	}
 	spin_unlock(&hugetlb_lock);
+
+	/*
+	 * clearing __GFP_MOVABLE flag ensure that allocated page
+	 * will not come from CMA area
+	 */
+	if (ac->skip_cma)
+		ac->gfp_mask &= ~__GFP_MOVABLE;
 
 	return alloc_migrate_huge_page(h, ac);
 }

@@ -1618,14 +1618,11 @@ static struct page *new_non_cma_page(struct page *page, unsigned long private)
 		struct alloc_control ac = {
 			.nid = nid,
 			.nmask = NULL,
-			.gfp_mask = gfp_mask,
+			.gfp_mask = __GFP_NOWARN,
+			.skip_cma = true,
 		};
 
-		/*
-		 * We don't want to dequeue from the pool because pool pages will
-		 * mostly be from the CMA region.
-		 */
-		return alloc_migrate_huge_page(h, &ac);
+		return alloc_huge_page_nodemask(h, &ac);
 	}
 
 	if (PageTransHuge(page)) {
