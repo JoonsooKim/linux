@@ -1069,15 +1069,15 @@ static struct page *dequeue_huge_page_nodemask(struct hstate *h,
 	struct zoneref *z;
 	int node = NUMA_NO_NODE;
 
-	zonelist = node_zonelist(ac->nid, ac->gfp_mask);
+	zonelist = node_zonelist(ac->nid, ac->__gfp_mask);
 
 retry_cpuset:
 	cpuset_mems_cookie = read_mems_allowed_begin();
 	for_each_zone_zonelist_nodemask(zone, z, zonelist,
-			gfp_zone(ac->gfp_mask), ac->nmask) {
+			gfp_zone(ac->__gfp_mask), ac->nmask) {
 		struct page *page;
 
-		if (!cpuset_zone_allowed(zone, ac->gfp_mask))
+		if (!cpuset_zone_allowed(zone, ac->__gfp_mask))
 			continue;
 		/*
 		 * no need to ask again on the same node. Pool is node rather than
@@ -1952,7 +1952,7 @@ static struct page *alloc_migrate_huge_page(struct hstate *h,
 	if (hstate_is_gigantic(h))
 		return NULL;
 
-	page = alloc_fresh_huge_page(h, ac->gfp_mask,
+	page = alloc_fresh_huge_page(h, ac->__gfp_mask,
 				ac->nid, ac->nmask, NULL);
 	if (!page)
 		return NULL;
@@ -1990,9 +1990,10 @@ struct page *alloc_buddy_huge_page_with_mpol(struct hstate *h,
 struct page *alloc_huge_page_nodemask(struct hstate *h,
 				struct alloc_control *ac)
 {
-	ac->gfp_mask |= htlb_alloc_mask(h);
+	ac->__gfp_mask = htlb_alloc_mask(h);
+	ac->__gfp_mask |= ac->gfp_mask;
 	if (ac->thisnode && ac->nid != NUMA_NO_NODE)
-		ac->gfp_mask |= __GFP_THISNODE;
+		ac->__gfp_mask |= __GFP_THISNODE;
 
 	spin_lock(&hugetlb_lock);
 	if (h->free_huge_pages - h->resv_huge_pages > 0) {
@@ -2011,7 +2012,7 @@ struct page *alloc_huge_page_nodemask(struct hstate *h,
 	 * will not come from CMA area
 	 */
 	if (ac->skip_cma)
-		ac->gfp_mask &= ~__GFP_MOVABLE;
+		ac->__gfp_mask &= ~__GFP_MOVABLE;
 
 	return alloc_migrate_huge_page(h, ac);
 }

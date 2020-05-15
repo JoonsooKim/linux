@@ -620,6 +620,8 @@ struct alloc_control {
 	gfp_t gfp_mask;
 	bool thisnode;
 	bool skip_cma;
+
+	gfp_t __gfp_mask;	/* Used internally in API implementation */
 };
 
 #endif	/* __MM_INTERNAL_H */
