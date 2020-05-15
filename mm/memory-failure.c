@@ -1626,9 +1626,10 @@ static struct page *new_page(struct page *p, struct alloc_control *__ac)
 	struct alloc_control ac = {
 		.nid = page_to_nid(p),
 		.nmask = &node_states[N_MEMORY],
+		.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL,
 	};
 
-	return new_page_nodemask(p, &ac);
+	return alloc_migration_target(p, &ac);
 }
 
 /*

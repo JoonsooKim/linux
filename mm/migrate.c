@@ -1519,31 +1519,35 @@ out:
 	return rc;
 }
 
-struct page *new_page_nodemask(struct page *page, struct alloc_control *ac)
+struct page *alloc_migration_target(struct page *page, struct alloc_control *ac)
 {
-	gfp_t gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL;
 	unsigned int order = 0;
 	struct page *new_page = NULL;
+	int zidx;
 
+	/* hugetlb has it's own gfp handling logic */
 	if (PageHuge(page)) {
 		struct hstate *h = page_hstate(page);
-		struct alloc_control __ac = {
-			.nid = ac->nid,
-			.nmask = ac->nmask,
-		};
 
-		return alloc_huge_page_nodemask(h, &__ac);
+		return alloc_huge_page_nodemask(h, ac);
 	}
 
+	ac->__gfp_mask = ac->gfp_mask;
 	if (PageTransHuge(page)) {
-		gfp_mask |= GFP_TRANSHUGE;
+		ac->__gfp_mask |= GFP_TRANSHUGE;
 		order = HPAGE_PMD_ORDER;
 	}
+	zidx = zone_idx(page_zone(page));
+	if (is_highmem_idx(zidx) || zidx == ZONE_MOVABLE)
+		ac->__gfp_mask |= __GFP_HIGHMEM;
 
-	if (PageHighMem(page) || (zone_idx(page_zone(page)) == ZONE_MOVABLE))
-		gfp_mask |= __GFP_HIGHMEM;
+	if (ac->thisnode)
+		ac->__gfp_mask |= __GFP_THISNODE;
+	if (ac->skip_cma)
+		ac->__gfp_mask &= ~__GFP_MOVABLE;
 
-	new_page = __alloc_pages_nodemask(gfp_mask, order, ac->nid, ac->nmask);
+	new_page = __alloc_pages_nodemask(ac->__gfp_mask, order,
+					ac->nid, ac->nmask);
 
 	if (new_page && PageTransHuge(new_page))
 		prep_transhuge_page(new_page);
