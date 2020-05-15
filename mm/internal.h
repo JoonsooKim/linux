@@ -612,9 +612,6 @@ static inline bool is_migrate_highatomic_page(struct page *page)
 }
 
 void setup_zone_pageset(struct zone *zone);
-struct alloc_control;
-extern struct page *alloc_new_node_page(struct page *page,
-				struct alloc_control *ac);
 
 struct alloc_control {
 	int nid;

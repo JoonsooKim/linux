@@ -1065,33 +1065,6 @@ static int migrate_page_add(struct page *page, struct list_head *pagelist,
 	return 0;
 }
 
-/* page allocation callback for NUMA node migration */
-struct page *alloc_new_node_page(struct page *page, struct alloc_control *__ac)
-{
-	if (PageHuge(page)) {
-		struct hstate *h = page_hstate(page);
-		struct alloc_control ac = {
-			.nid = __ac->nid,
-			.nmask = NULL,
-			.thisnode = true,
-		};
-
-		return alloc_huge_page_nodemask(h, &ac);
-	} else if (PageTransHuge(page)) {
-		struct page *thp;
-
-		thp = alloc_pages_node(__ac->nid,
-			(GFP_TRANSHUGE | __GFP_THISNODE),
-			HPAGE_PMD_ORDER);
-		if (!thp)
-			return NULL;
-		prep_transhuge_page(thp);
-		return thp;
-	} else
-		return __alloc_pages_node(__ac->nid, GFP_HIGHUSER_MOVABLE |
-						    __GFP_THISNODE, 0);
-}
-
 /*
  * Migrate pages from one node to a target node.
  * Returns error or the number of pages not migrated.
@@ -1104,6 +1077,8 @@ static int migrate_to_node(struct mm_struct *mm, int source, int dest,
 	int err = 0;
 	struct alloc_control ac = {
 		.nid = dest,
+		.gfp_mask = GFP_HIGHUSER_MOVABLE,
+		.thisnode = true,
 	};
 
 	nodes_clear(nmask);
@@ -1119,8 +1094,8 @@ static int migrate_to_node(struct mm_struct *mm, int source, int dest,
 			flags | MPOL_MF_DISCONTIG_OK, &pagelist);
 
 	if (!list_empty(&pagelist)) {
-		err = migrate_pages(&pagelist, alloc_new_node_page, NULL, &ac,
-					MIGRATE_SYNC, MR_SYSCALL);
+		err = migrate_pages(&pagelist, alloc_migration_target, NULL,
+					&ac, MIGRATE_SYNC, MR_SYSCALL);
 		if (err)
 			putback_movable_pages(&pagelist);
 	}
