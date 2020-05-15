@@ -505,8 +505,6 @@ struct huge_bootmem_page {
 
 struct page *alloc_migrate_huge_page(struct hstate *h,
 				struct alloc_control *ac);
-struct page *alloc_huge_page_node(struct hstate *h,
-				struct alloc_control *ac);
 struct page *alloc_huge_page_nodemask(struct hstate *h,
 				struct alloc_control *ac);
 struct page *alloc_huge_page_vma(struct hstate *h, struct vm_area_struct *vma,
@@ -753,12 +751,6 @@ static inline void huge_ptep_modify_prot_commit(struct vm_area_struct *vma,
 
 #else	/* CONFIG_HUGETLB_PAGE */
 struct hstate {};
-
-static inline struct page *
-alloc_huge_page_node(struct hstate *h, struct alloc_control *ac)
-{
-	return NULL;
-}
 
 static inline struct page *
 alloc_huge_page_nodemask(struct hstate *h, struct alloc_control *ac)

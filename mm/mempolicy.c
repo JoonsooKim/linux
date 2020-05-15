@@ -1073,9 +1073,10 @@ struct page *alloc_new_node_page(struct page *page, unsigned long node)
 		struct alloc_control ac = {
 			.nid = node,
 			.nmask = NULL,
+			.thisnode = true,
 		};
 
-		return alloc_huge_page_node(h, &ac);
+		return alloc_huge_page_nodemask(h, &ac);
 	} else if (PageTransHuge(page)) {
 		struct page *thp;
 

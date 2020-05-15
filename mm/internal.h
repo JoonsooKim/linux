@@ -618,6 +618,7 @@ struct alloc_control {
 	int nid;
 	nodemask_t *nmask;
 	gfp_t gfp_mask;
+	bool thisnode;
 };
 
 #endif	/* __MM_INTERNAL_H */
