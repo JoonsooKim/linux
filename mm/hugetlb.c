@@ -1985,7 +1985,7 @@ struct page *alloc_huge_page_node(struct hstate *h,
 {
 	struct page *page = NULL;
 
-	ac->gfp_mask = htlb_alloc_mask(h);
+	ac->gfp_mask |= htlb_alloc_mask(h);
 	if (ac->nid != NUMA_NO_NODE)
 		ac->gfp_mask |= __GFP_THISNODE;
 
@@ -2004,7 +2004,7 @@ struct page *alloc_huge_page_node(struct hstate *h,
 struct page *alloc_huge_page_nodemask(struct hstate *h,
 				struct alloc_control *ac)
 {
-	ac->gfp_mask = htlb_alloc_mask(h);
+	ac->gfp_mask |= htlb_alloc_mask(h);
 
 	spin_lock(&hugetlb_lock);
 	if (h->free_huge_pages - h->resv_huge_pages > 0) {
