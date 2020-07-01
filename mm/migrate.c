@@ -1539,6 +1539,7 @@ struct page *alloc_migration_target(struct page *page, unsigned long private)
 	struct page *new_page = NULL;
 	int nid;
 	int zidx;
+	unsigned int flags = 0;
 
 	mtc = (struct migration_target_control *)private;
 	gfp_mask = mtc->gfp_mask;
@@ -1551,8 +1552,11 @@ struct page *alloc_migration_target(struct page *page, unsigned long private)
 
 		gfp_mask |= htlb_alloc_mask(h);
 		return alloc_huge_page_nodemask(h, nid, mtc->nmask,
-						gfp_mask, false);
+						gfp_mask, mtc->skip_cma);
 	}
+
+	if (mtc->skip_cma)
+		flags = memalloc_nocma_save();
 
 	if (PageTransHuge(page)) {
 		/*
@@ -1571,6 +1575,9 @@ struct page *alloc_migration_target(struct page *page, unsigned long private)
 
 	if (new_page && PageTransHuge(new_page))
 		prep_transhuge_page(new_page);
+
+	if (mtc->skip_cma)
+		memalloc_nocma_restore(flags);
 
 	return new_page;
 }
