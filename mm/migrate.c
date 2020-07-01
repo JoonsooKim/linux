@@ -1543,7 +1543,7 @@ struct page *new_page_nodemask(struct page *page,
 
 		gfp_mask = htlb_alloc_mask(h);
 		return alloc_huge_page_nodemask(h, preferred_nid,
-						nodemask, gfp_mask);
+						nodemask, gfp_mask, false);
 	}
 
 	if (PageTransHuge(page)) {

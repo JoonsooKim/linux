@@ -1072,7 +1072,7 @@ struct page *alloc_new_node_page(struct page *page, unsigned long node)
 		struct hstate *h = page_hstate(compound_head(page));
 		gfp_t gfp_mask = htlb_alloc_mask(h) | __GFP_THISNODE;
 
-		return alloc_huge_page_nodemask(h, node, NULL, gfp_mask);
+		return alloc_huge_page_nodemask(h, node, NULL, gfp_mask, false);
 	} else if (PageTransHuge(page)) {
 		struct page *thp;
 
