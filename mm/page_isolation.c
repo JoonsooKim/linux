@@ -309,11 +309,7 @@ int test_pages_isolated(unsigned long start_pfn, unsigned long end_pfn,
 
 struct page *alloc_migrate_target(struct page *page, unsigned long private)
 {
-	struct migration_target_control mtc = {
-		.nid = page_to_nid(page),
-		.nmask = &node_states[N_MEMORY],
-		.gfp_mask = GFP_USER | __GFP_MOVABLE | __GFP_RETRY_MAYFAIL,
-	};
+	int nid = page_to_nid(page);
 
-	return alloc_migration_target(page, (unsigned long)&mtc);
+	return new_page_nodemask(page, nid, &node_states[N_MEMORY]);
 }
