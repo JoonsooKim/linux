@@ -1541,7 +1541,7 @@ struct page *new_page_nodemask(struct page *page,
 	if (PageHuge(page)) {
 		return alloc_huge_page_nodemask(
 				page_hstate(compound_head(page)),
-				preferred_nid, nodemask, 0, false);
+				preferred_nid, nodemask, 0);
 	}
 
 	if (PageTransHuge(page)) {
